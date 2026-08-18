@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>부모 화면 — 양이랑 구구단</title>
+<style>
+  body { margin:0; padding:40px 24px 80px; background:#f6f7f8; color:#2f3b46;
+         font-family:"Malgun Gothic","Apple SD Gothic Neo",system-ui,sans-serif; line-height:1.6; }
+  main { max-width: 560px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 { font-size: 17px; margin: 0 0 8px; }
+  p.sub { margin: 0 0 28px; color:#6b7b88; font-size: 15px; }
+  section { background:#fff; border:1px solid #dfe7ec; border-radius:12px; padding:20px; margin-bottom:18px; }
+  label { display:block; margin: 14px 0 6px; font-size: 14px; color:#6b7b88; }
+  input, select, textarea, button { font: inherit; width: 100%; padding: 11px 14px;
+         border: 1px solid #dfe7ec; border-radius: 9px; background:#fff; color:#2f3b46; }
+  textarea { height: 110px; font-size: 13px; resize: vertical; }
+  button { cursor: pointer; margin-top: 14px; background:#2f3b46; color:#fff; border-color:#2f3b46; }
+  table { width:100%; border-collapse: collapse; font-size: 15px; }
+  td { padding: 7px 0; border-bottom: 1px solid #eef2f4; }
+  td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+  .msg { margin-top: 12px; font-size: 15px; color:#6b7b88; min-height: 24px; }
+  .hint { font-size: 14px; color:#6b7b88; margin: 0 0 10px; }
+  .pack { padding: 10px 0; border-bottom: 1px solid #eef2f4; font-size: 15px; }
+  .pack:last-child { border-bottom: 0; }
+  .warn { color:#8a6d3b; font-size: 14px; margin-top: 4px; }
+  code { background:#f0f3f5; padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>부모 화면</h1>
+  <p class="sub">아이 화면에서는 여기로 오는 길이 없습니다.</p>
+
+  <section>
+    <h2>PIN</h2>
+    <p class="hint">설정을 바꿀 때 필요합니다. 처음 값은 0000입니다.</p>
+    <input id="pin" type="password" inputmode="numeric" value="0000">
+  </section>
+
+  <section>
+    <h2>진행 현황</h2>
+    <label>프로필</label>
+    <select id="who"></select>
+    <table id="stat"><tr><td>불러오는 중…</td></tr></table>
+  </section>
+
+  <section>
+    <h2>문제 팩</h2>
+    <p class="hint"><code>content\problems</code> 폴더의 CSV·MD 파일입니다. 저장하면 바로 반영되고,
+      아이패드에서 새로고침만 하면 됩니다. 아래 목록이 안 보이면 PIN을 확인하세요.</p>
+    <div id="packs">불러오는 중…</div>
+    <button id="reload">다시 읽기</button>
+  </section>
+
+  <section>
+    <h2>설정</h2>
+    <label>하루 목표 문제 수</label>
+    <input id="goal" type="number" min="5" max="60">
+    <button id="saveSet">설정 저장</button>
+    <p class="msg" id="msgSet"></p>
+  </section>
+
+  <section>
+    <h2>v1 기록 가져오기</h2>
+    <p class="hint">예전 게임의 <b>설정 → 기록 백업</b>에 있던 글자를 그대로 붙여넣으세요.
+      모은 풀과 아이템, 양 이름, 외운 구구단이 위에서 고른 프로필로 옮겨집니다.
+      <b>지금 진행 중인 기록은 덮어씁니다.</b></p>
+    <textarea id="v1" placeholder='{"name":"뭉치","grass":240, ...}'></textarea>
+    <button id="migrate">이 기록 가져오기</button>
+    <p class="msg" id="msgMig"></p>
+  </section>
+</main>
+
+<script type="module">
+import { isRewardable } from '/engine.js';
+
+const $ = id => document.getElementById(id);
+const api = (url, opt) => fetch(url, opt).then(r => r.json());
+
+const boot = await api('/api/bootstrap');
+$('goal').value = boot.settings.defaultGoal;
+$('who').innerHTML = boot.profiles.map(p => `<option value="${p.id}">${p.displayName}</option>`).join('')
+  || '<option value="">아직 없습니다</option>';
+
+async function showStat() {
+  const id = $('who').value;
+  if (!id) return;
+  const p = await api(`/api/profile/${encodeURIComponent(id)}`);
+  const facts = Object.values(p.facts);
+  const seen = facts.reduce((n, f) => n + f.seen, 0);
+  const right = facts.reduce((n, f) => n + f.right, 0);
+  $('stat').innerHTML = [
+    ['양 이름', p.characters.names.sheep || '아직 안 지음'],
+    ['오늘 푼 문제', `${p.daily.solved} / ${p.daily.goal}`],
+    ['완전히 외운 문제', p.totals.mastered],
+    ['누적 정답률', seen ? `${Math.round(right / seen * 100)}% (${right}/${seen})` : '—'],
+    ['모은 풀 · 별', `${p.wallet.grass} · ${p.wallet.star}`],
+    ['함께한 날', `${p.totals.daysPlayed}일`],
+  ].map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('');
+}
+$('who').onchange = showStat;
+showStat();
+
+async function showPacks() {
+  const res = await api('/api/parent/packs', { headers: { 'X-Parent-Pin': $('pin').value } });
+  if (res.error) return $('packs').textContent = res.error;
+  if (!res.packs.length) return $('packs').textContent = '아직 파일이 없습니다. 내장 구구단만 나옵니다.';
+
+  $('packs').innerHTML = res.packs.map(p => `
+    <div class="pack">
+      <b>${p.file}</b> — 문제 ${p.count}개
+      ${p.warnings.map(w => `<div class="warn">· ${w}</div>`).join('')}
+    </div>`).join('');
+}
+showPacks();
+$('reload').onclick = showPacks;
+
+$('saveSet').onclick = async () => {
+  const res = await api('/api/parent/settings', {
+    method: 'PUT', headers: { 'X-Parent-Pin': $('pin').value },
+    body: JSON.stringify({ defaultGoal: Number($('goal').value) })
+  });
+  $('msgSet').textContent = res.saved ? '저장했습니다.' : res.error;
+};
+
+/* v1(단일 HTML + localStorage) → v2 프로필 변환 */
+function fromV1(old, p) {
+  p.wallet.grass = old.grass || 0;
+  p.inventory.items = old.owned || [];
+  p.characters.equipped.sheep = { hat: old.hat || null, neck: old.scarf || null, prop: null };
+  if (old.name) p.characters.names.sheep = String(old.name).slice(0, 8);
+  p.totals.daysPlayed = old.totalDays || 0;
+  for (const [k, m] of Object.entries(old.facts || {})) {
+    p.facts[`gugudan:${k}`] = {
+      m, seen: 0, right: 0, lastSeenDay: null,
+      masteredAt: m === 4 && isRewardable(`gugudan:${k}`) ? p.createdAt : null, bestMs: null
+    };
+  }
+  p.totals.mastered = Object.values(p.facts).filter(f => f.masteredAt).length;
+  return p;
+}
+
+$('migrate').onclick = async () => {
+  const id = $('who').value;
+  if (!id) return $('msgMig').textContent = '먼저 아이 화면에서 프로필을 만들어 주세요.';
+
+  let old;
+  try { old = JSON.parse($('v1').value.trim()); }
+  catch { return $('msgMig').textContent = '붙여넣은 내용이 올바르지 않습니다.'; }
+  if (typeof old.grass !== 'number' || !old.facts)
+    return $('msgMig').textContent = '예전 게임의 백업 글자가 아닌 것 같습니다.';
+  if (!confirm(`${id}의 지금 기록을 덮어씁니다. 계속할까요?`)) return;
+
+  const p = await api(`/api/profile/${encodeURIComponent(id)}`);
+  await api(`/api/profile/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(fromV1(old, p)) });
+  $('msgMig').textContent = `가져왔습니다. 풀 ${old.grass}, 아이템 ${(old.owned || []).length}개. 아이패드에서 새로고침하세요.`;
+  showStat();
+};
+</script>
+</body>
+</html>
