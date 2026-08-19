@@ -79,13 +79,13 @@ export function buildIndex(packs = [], disabled = null, progress = null) {
     TARGETS.forEach(([a, b], i) => {
       const key = factKey(a, b);
       if (offQ.has(key)) return;
-      index[key] = { packId: GUGUDAN, packName: '구구단', order: i,
+      index[key] = { packId: GUGUDAN, packName: '구구단', subject: null, unit: null, order: i,
                      mul: [a, b], gated: true, rewardable: true, start: 0 };
     });
     EASY.forEach(([a, b], i) => {
       const key = factKey(a, b);
       if (offQ.has(key)) return;
-      index[key] = { packId: GUGUDAN, packName: '구구단', order: 100 + i,
+      index[key] = { packId: GUGUDAN, packName: '구구단', subject: null, unit: null, order: 100 + i,
                      mul: [a, b], gated: false, rewardable: false, start: 2 };
     });
   }
@@ -94,7 +94,8 @@ export function buildIndex(packs = [], disabled = null, progress = null) {
     if (offP.has(pack.id) || !open.has(pack.id)) return;
     pack.problems.forEach(q => {
       if (offQ.has(q.key)) return;
-      index[q.key] = { packId: pack.id, packName: pack.name, order: q.order,
+      index[q.key] = { packId: pack.id, packName: pack.name,
+                       subject: pack.subject || null, unit: pack.unit || null, order: q.order,
                        prompt: q.prompt, answer: q.answer, choices: q.choices, hint: q.hint,
                        gated: true, rewardable: true, start: 0 };
     });
@@ -114,8 +115,10 @@ export const buildIndexAll = (packs = []) => buildIndex(packs, null, EVERY);
 
 export function packList(index) {
   const seen = new Map();
-  for (const e of Object.values(index)) if (!seen.has(e.packId)) seen.set(e.packId, e.packName);
-  return [...seen].map(([id, name]) => ({ id, name }));
+  for (const e of Object.values(index))
+    if (!seen.has(e.packId))
+      seen.set(e.packId, { id: e.packId, name: e.packName, subject: e.subject, unit: e.unit });
+  return [...seen.values()];
 }
 
 /* 없는 문제만 채운다 — 이미 푼 진도는 건드리지 않는다 */
@@ -130,10 +133,17 @@ export function seedFacts(index, facts) {
 const NEW_AT_ONCE = 3;
 const MIN_POOL = 8;
 
-function openKeys(index, facts, packId) {
+/* 자유 모드에서 무엇을 낼지 — 팩 하나이거나 과목 전체다.
+   문자열을 넘기면 팩 하나로 본다(예전 호출부와 호환). */
+const asPick = p => (typeof p === 'string' ? { pack: p } : p) || null;
+
+const inPick = (entry, pick) =>
+  !pick ? true : pick.subject ? entry.subject === pick.subject : entry.packId === pick.pack;
+
+function openKeys(index, facts, pick) {
   const byPack = {};
   for (const [key, e] of Object.entries(index)) {
-    if (!e.gated || (packId && e.packId !== packId)) continue;
+    if (!e.gated || !inPick(e, pick)) continue;
     (byPack[e.packId] ||= []).push([key, e.order]);
   }
 
@@ -149,15 +159,15 @@ function openKeys(index, facts, packId) {
     }
   }
 
-  let pool = poolSize(index, facts, packId, open);
+  let pool = poolSize(index, facts, pick, open);
   while (pool < MIN_POOL && waiting.length) { open.add(waiting.shift()); pool++; }
   return open;
 }
 
-function poolSize(index, facts, packId, open) {
+function poolSize(index, facts, pick, open) {
   let n = 0;
   for (const [key, e] of Object.entries(index)) {
-    if (packId && e.packId !== packId) continue;
+    if (!inPick(e, pick)) continue;
     if (!e.gated || facts[key].m > 0 || open.has(key)) n++;
   }
   return n;
@@ -174,15 +184,16 @@ function daysBetween(a, b) {
   return Math.round((new Date(b) - new Date(a)) / 86400000);
 }
 
-export function pickKey(index, facts, recent, today, packId = null) {
-  const open = openKeys(index, facts, packId);
+export function pickKey(index, facts, recent, today, want = null) {
+  const pick = asPick(want);
+  const open = openKeys(index, facts, pick);
 
   const build = skip => {
     const pool = [];
     let total = 0;
     for (const [key, entry] of Object.entries(index)) {
       if (skip.includes(key)) continue;
-      if (packId && entry.packId !== packId) continue;
+      if (!inPick(entry, pick)) continue;
       const w = weightOf(key, entry, facts[key], open, today);
       if (w > 0) { pool.push([key, w]); total += w; }
     }
@@ -234,8 +245,8 @@ export function makeChoices(a, b) {
   return set.sort(() => Math.random() - .5).map(String);
 }
 
-export function makeQuestion(index, facts, recent, today, packId = null) {
-  const key = pickKey(index, facts, [].concat(recent || []), today, packId);
+export function makeQuestion(index, facts, recent, today, want = null) {
+  const key = pickKey(index, facts, [].concat(recent || []), today, want);
   const e = index[key];
 
   if (e.mul) {

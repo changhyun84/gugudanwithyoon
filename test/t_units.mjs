@@ -199,5 +199,44 @@ ok('진도를 저장할 때 프로필을 다시 받아 얹는다 (2.11)',
 ok('진도를 내릴 때 사라지는 것이 없다고 알려준다',
   parentSrc.includes('그대로 남습니다') || parentSrc.includes('사라지는 것은 없습니다'));
 
+/* ── 자유 모드 필터 ── */
+group('자유 모드 — 과목 전체 / 단원 하나');
+
+const idx = E.buildIndex(PACKS, null, { 수학: '1-3', 한국사: '1-2' });
+const facts = {};
+E.seedFacts(idx, facts);
+
+const list = E.packList(idx);
+ok('packList에 과목·단원이 실린다',
+  list.every(p => 'subject' in p && 'unit' in p));
+ok('안 열린 단원은 목록에 없다 — 회색으로도 안 보여준다(16.5)',
+  !list.some(p => p.id === 'm10'));
+ok('열린 것만 있다', list.filter(p => p.subject).map(p => p.id).sort().join(',') === 'extra,h1,h2,m1,m2,m3');
+
+const drawn = (want, n = 200) => {
+  const seen = new Set();
+  for (let i = 0; i < n; i++) seen.add(idx[E.pickKey(idx, facts, [], '2026-09-05', want)].packId);
+  return [...seen].sort().join(',');
+};
+ok('과목 전체를 고르면 그 과목만', drawn({ subject: '한국사' }) === 'h1,h2');
+ok('단원 하나를 고르면 그것만', drawn({ pack: 'm2' }) === 'm2');
+ok('아무것도 안 고르면 구구단까지 섞인다', drawn(null).includes('gugudan'));
+ok('문자열을 넘기면 팩 하나로 본다 (예전 호출부 호환)', drawn('m3') === 'm3');
+ok('과목을 골라도 MIN_POOL 보정이 돈다 — 같은 문제만 반복되지 않는다',
+  new Set(Array.from({ length: 200 }, () =>
+    E.pickKey(idx, facts, [], '2026-09-05', { subject: '수학' }))).size >= 4);
+
+/* ── 아이 화면 ── */
+group('아이 화면 (app.js)');
+
+const appSrc = readFileSync(new URL('../web/app.js', import.meta.url), 'utf8');
+ok('안 열린 단원을 회색으로 그리는 코드가 없다', !/locked.*data-(pack|into)|data-(pack|into).*locked/.test(appSrc));
+ok('진도를 buildIndex에 넘긴다', /buildIndex\(PACKS, P\.disabled, P\.progress\)/.test(appSrc));
+ok('새 단원 알림이 있다', appSrc.includes('새로운 문제가 왔어'));
+ok('처음 들어온 아이에게는 안 알린다',
+  /if \(!P\.seenPacks\.length\)[\s\S]{0,80}return;/.test(appSrc));
+ok('문제를 풀러 가면 알림이 지워진다',
+  (appSrc.match(/P\.settings\.newUnits = \[\]/g) || []).length >= 2);
+
 console.log(`\n${pass}개 통과, ${fail}개 실패`);
 process.exit(fail ? 1 : 0);

@@ -18,7 +18,9 @@ let WISHES = [];          // content/wishes.csv — 파일이 없으면 소원�
 let ALLOW = null;         // 용돈 설정 (data/settings.json). 부모가 켜야 나타난다
 const recent = [];        // 최근 쓴 응원 5개 — 바로 반복되면 금방 질린다
 const recentKeys = [];    // 최근 낸 문제 3개 — 같은 문제가 연달아 나오지 않게
-let view = 'home', quiz = null, shopTab = 'hat', askedAt = 0, sinceSave = 0, packId = null;
+let view = 'home', quiz = null, shopTab = 'hat', askedAt = 0, sinceSave = 0;
+let pick = null;          // 자유 모드 — null(전부) / {pack} / {subject}
+let pickSubject = null;   // 과목을 고른 뒤 단원 화면에 머무는 동안
 
 const today = () => new Date().toLocaleDateString('sv-SE');   // 2026-08-16
 const esc = s => String(s).replace(/[<>&"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
@@ -76,6 +78,7 @@ async function enter(id) {
   localStorage.setItem(LAST_ID, id);
   P.disabled ||= { problems: [], packs: [] };
   P.progress ||= {};                                         // 과목마다 여기까지 열림 (기획서 16.3)
+  P.seenPacks ||= [];                                        // 새 단원 알림용
   P.settings ||= { goal: 20, reduceMotion: false };          // v1에서 옮겨온 프로필 대비
   P.collection ||= { stickers: [], boardsCompleted: 0 };
   P.inventory.backgrounds ||= ['day'];
@@ -87,6 +90,7 @@ async function enter(id) {
   rollDay();
   const owed = catchUpBoards();   // 도감 보상은 5B에서 생겼다 — 그 전에 모은 것도 준다
   catchUpTier();
+  catchUpUnits();
   await save();
   go('home');
   if (owed) toast(`도감을 다 채운 판이 있었어! 별 ${owed}개`);
@@ -289,6 +293,8 @@ function renderHome() {
       '</div>' +
     '</div>' +
     `<button class="btn go mt2" id="play">${finished ? '조금 더 해볼래' : '문제 풀러 가기'}</button>` +
+    (P.settings.newUnits?.length
+      ? `<button class="btn sun mt" id="newunit">새로운 문제가 왔어! ${esc(P.settings.newUnits[0])}</button>` : '') +
     (P.settings.newTier ? '<button class="btn sun mt" data-go="shop">가게에 새로운 게 들어왔어!</button>' : '') +
     (nextFriend() && P.wallet.star >= nextFriend().star
       ? `<button class="btn sun mt" data-go="friends">${nextFriend().nm}가 기다리고 있어</button>` : '') +
@@ -304,33 +310,64 @@ function renderHome() {
     (allowanceDay() ? '<button class="btn sun mt" data-go="money">오늘 용돈 바꾸는 날!</button>' : '') +
     `<p class="sub center mt2">구구단 ${learned} / ${TARGETS.length}${extra} &nbsp;·&nbsp; 함께한 날 ${P.totals.daysPlayed}일</p>`;
 
-  app.querySelector('#play').onclick = () => packList(INDEX).length > 1 ? go('pick') : startQuiz();
+  const play = () => { pickSubject = null; packList(INDEX).length > 1 ? go('pick') : startQuiz(); };
+  app.querySelector('#play').onclick = play;
+  const nu = app.querySelector('#newunit');
+  if (nu) nu.onclick = play;
 }
 
 /* ============ 무엇을 풀까 (자유 모드) ============ */
 
+/* 열린 것만 보인다. 아직 안 배운 단원을 회색으로 보여주지 않는다 —
+   목장의 다음 친구는 아이가 별을 모아 여는 것이지만, 단원은 학교가 여는 것이라
+   눈앞에 두면 목표가 아니라 압박이 된다 (기획서 16.5). */
 function renderPick() {
-  const packs = packList(INDEX);
-  app.innerHTML = topbar(true) +
-    '<div class="card stage">' + me('happy', 'pop') +
-      '<h1 class="sheepname">무엇을 풀까?</h1>' +
-      '<p class="sub">골라도 되고, 다 섞어도 돼</p>' +
-    '</div>' +
-    '<button class="btn go mt2" data-pack="">다 섞어서</button>' +
-    packs.map(p => `<button class="btn soft mt" data-pack="${esc(p.id)}">${esc(p.name)}</button>`).join('');
+  P.settings.newUnits = [];   // 여기까지 왔으면 알림은 지운다
 
+  const packs = packList(INDEX);
+  const subjects = [...new Set(packs.map(p => p.subject).filter(Boolean))];
+  const head = (title, sub) =>
+    '<div class="card stage">' + me('happy', 'pop') +
+      `<h1 class="sheepname">${esc(title)}</h1><p class="sub">${esc(sub)}</p></div>`;
+
+  // 2단계 — 과목 안에서 단원 고르기
+  if (pickSubject) {
+    const units = packs.filter(p => p.subject === pickSubject);
+    app.innerHTML = topbar(true) + head(pickSubject, '단원을 골라도 되고, 다 섞어도 돼') +
+      `<button class="btn go mt2" data-sub="${esc(pickSubject)}">${esc(pickSubject)} 다 섞어서</button>` +
+      units.map(p => `<button class="btn soft mt" data-pack="${esc(p.id)}">${esc(p.name)}</button>`).join('') +
+      '<button class="btn soft mt2" id="othersub">다른 것 고르기</button>';
+    app.querySelector('#othersub').onclick = () => { pickSubject = null; renderPick(); bind(); };
+  } else {
+    // 1단계 — 과목이 있으면 과목부터. 과목 없는 팩은 그대로 나열한다
+    const loose = packs.filter(p => !p.subject);
+    app.innerHTML = topbar(true) + head('무엇을 풀까?', '골라도 되고, 다 섞어도 돼') +
+      '<button class="btn go mt2" data-pack="">다 섞어서</button>' +
+      subjects.map(s => `<button class="btn soft mt" data-into="${esc(s)}">${esc(s)}</button>`).join('') +
+      loose.map(p => `<button class="btn soft mt" data-pack="${esc(p.id)}">${esc(p.name)}</button>`).join('');
+  }
+
+  app.querySelectorAll('[data-into]').forEach(b => b.onclick = () => {
+    pickSubject = b.dataset.into;
+    renderPick();
+    bind();
+  });
+  app.querySelectorAll('[data-sub]').forEach(b => b.onclick = () => {
+    pick = { subject: b.dataset.sub };
+    startQuiz();
+  });
   app.querySelectorAll('[data-pack]').forEach(b => b.onclick = () => {
-    packId = b.dataset.pack || null;
+    pick = b.dataset.pack ? { pack: b.dataset.pack } : null;
     startQuiz();
   });
 }
 
 /* ============ 퀴즈 ============ */
 
-function startQuiz() { nextQ(); go('quiz'); }
+function startQuiz() { P.settings.newUnits = []; nextQ(); go('quiz'); }
 
 function nextQ() {
-  quiz = makeQuestion(INDEX, P.facts, recentKeys, today(), packId);
+  quiz = makeQuestion(INDEX, P.facts, recentKeys, today(), pick);
   recentKeys.push(quiz.key);
   if (recentKeys.length > 3) recentKeys.shift();
   askedAt = Date.now();
@@ -411,6 +448,20 @@ function advance() {
   nextQ();
   renderQuiz();
   bind();
+}
+
+/* 부모가 진도를 올리면 아이에게는 사건이 된다 (기획서 16.6).
+   처음 들어온 아이에게는 알리지 않는다 — 그건 새로 열린 게 아니라 원래 있던 것이다. */
+function catchUpUnits() {
+  const now = [...new Set(Object.values(INDEX).map(e => e.packId))];
+  if (!P.seenPacks.length) { P.seenPacks = now; return; }
+
+  const fresh = now.filter(id => !P.seenPacks.includes(id));
+  if (!fresh.length) return;
+
+  P.seenPacks = now;
+  const nameOf = id => Object.values(INDEX).find(e => e.packId === id)?.packName || '';
+  P.settings.newUnits = fresh.map(nameOf).filter(Boolean);   // 무엇을 풀까 화면에서 지운다
 }
 
 /* ============ 배경 ============ */
