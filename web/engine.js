@@ -20,12 +20,59 @@ export const factKey = (a, b) => `${GUGUDAN}:${Math.min(a, b)}x${Math.max(a, b)}
 const EASY_KEYS = new Set(EASY.map(([a, b]) => factKey(a, b)));
 export const isRewardable = key => !EASY_KEYS.has(key);
 
+/* ── 학습 진도 (기획서 16장) ───────────────────────
+   폴더 = 과목, 파일명 앞의 1-1 = 단원. 과목마다 "여기까지"만 연다. */
+
+/* packs.py의 natural()과 같은 규칙. 1-10이 1-2보다 앞에 오면 안 된다. */
+function natKey(s) {
+  return String(s).split(/(\d+)/).filter(Boolean).map(x => /^\d+$/.test(x) ? +x : x);
+}
+
+function natCmp(a, b) {
+  const x = natKey(a), y = natKey(b);
+  for (let i = 0; i < Math.max(x.length, y.length); i++) {
+    const p = x[i], q = y[i];
+    if (p === undefined) return -1;
+    if (q === undefined) return 1;
+    if (p === q) continue;
+    if (typeof p === typeof q) return p < q ? -1 : 1;
+    return typeof p === 'number' ? -1 : 1;   // 숫자가 글자보다 앞
+  }
+  return 0;
+}
+
+const EVERY = Symbol('모든 단원');
+
+/* 지금 열려 있는 팩 id들.
+   - 과목이나 단원 번호가 없으면 진도 관리 대상이 아니라 늘 열려 있다
+   - 부모가 진도를 안 정했으면 **첫 단원만**. 파일을 넣자마자 다 열리면
+     아직 학교에서 안 배운 문제가 아이에게 나간다 */
+export function openPacks(packs = [], progress = null) {
+  if (progress === EVERY) return new Set(packs.map(p => p.id));
+
+  const open = new Set();
+  const bySubject = {};
+  for (const p of packs) {
+    if (!p.subject || !p.unit) { open.add(p.id); continue; }
+    (bySubject[p.subject] ||= []).push(p);
+  }
+
+  for (const [subject, list] of Object.entries(bySubject)) {
+    list.sort((a, b) => (a.order || 0) - (b.order || 0));
+    const upto = progress?.[subject];
+    if (!upto) { open.add(list[0].id); continue; }
+    for (const p of list) if (natCmp(p.unit, upto) <= 0) open.add(p.id);
+  }
+  return open;
+}
+
 /* 문제 하나의 정의:
    packId, order, gated(앞 3개 규칙 적용), rewardable(마스터 시 별), start(처음 마스터리)
    mul이 있으면 계산으로 만들고, 없으면 파일에서 온 고정 문제다. */
-export function buildIndex(packs = [], disabled = null) {
+export function buildIndex(packs = [], disabled = null, progress = null) {
   const offQ = new Set(disabled?.problems || []);
   const offP = new Set(disabled?.packs || []);
+  const open = openPacks(packs, progress);
   const index = {};
 
   if (!offP.has(GUGUDAN)) {
@@ -44,7 +91,7 @@ export function buildIndex(packs = [], disabled = null) {
   }
 
   packs.forEach(pack => {
-    if (offP.has(pack.id)) return;
+    if (offP.has(pack.id) || !open.has(pack.id)) return;
     pack.problems.forEach(q => {
       if (offQ.has(q.key)) return;
       index[q.key] = { packId: pack.id, packName: pack.name, order: q.order,
@@ -53,11 +100,17 @@ export function buildIndex(packs = [], disabled = null) {
     });
   });
 
-  // 부모가 실수로 전부 꺼도 아이 화면이 빈 채로 멈추면 안 된다 — 제외를 무시하고 다시 짓는다.
-  if (!Object.keys(index).length && (offQ.size || offP.size)) return buildIndex(packs);
+  // 부모가 실수로 전부 꺼도 아이 화면이 빈 채로 멈추면 안 된다 — 전부 무시하고 다시 짓는다.
+  // 무언가를 실제로 걸렀을 때만. 안 그러면 buildIndexAll이 자기를 다시 불러 무한히 돈다.
+  const filtered = offQ.size || offP.size || open.size < packs.length;
+  if (!Object.keys(index).length && filtered) return buildIndexAll(packs);
 
   return index;
 }
+
+/* 진도와 제외를 전부 무시한 색인. 부모 화면이 쓴다 —
+   부모는 아직 안 연 단원도 봐야 진도를 정할 수 있다. */
+export const buildIndexAll = (packs = []) => buildIndex(packs, null, EVERY);
 
 export function packList(index) {
   const seen = new Map();

@@ -121,5 +121,63 @@ print(json.dumps([{'id':p['id'],'count':p['count'],'subject':p['subject']}
 ok('지금 저장소의 파일 3개가 그대로 읽힌다', real.length === 3 && real.every(p => p.count > 0));
 ok('지금 파일은 전부 과목 없음 (옮기지 않아도 된다)', real.every(p => p.subject === null));
 
+/* ── 진도 (engine.js) ── */
+group('진도 — 과목마다 "여기까지"');
+
+const { mkdtempSync, writeFileSync, readFileSync } = await import('node:fs');
+const { tmpdir } = await import('node:os');
+const { join } = await import('node:path');
+const tmp = mkdtempSync(join(tmpdir(), 'gugudan-units-'));
+writeFileSync(join(tmp, 'engine.mjs'), readFileSync(new URL('../web/engine.js', import.meta.url)));
+const E = await import('file://' + join(tmp, 'engine.mjs'));
+
+const pack = (id, subject, unit, order) => ({
+  id, subject, unit, order, name: id,
+  problems: [{ key: `${id}:q`, order: 0, prompt: 'q', answer: '1', choices: ['1', '2', '3', '4'], hint: '' }],
+});
+const PACKS = [
+  pack('m1', '수학', '1-1', 0), pack('m2', '수학', '1-2', 1),
+  pack('m3', '수학', '1-3', 2), pack('m10', '수학', '1-10', 3),
+  pack('h1', '한국사', '1-1', 0), pack('h2', '한국사', '1-2', 1),
+  pack('flat', null, null, 0),          // 폴더 밖
+  pack('extra', '수학', null, 4),        // 폴더 안이지만 단원 번호 없음
+];
+const opened = (progress) => [...E.openPacks(PACKS, progress)].sort().join(',');
+
+ok('진도를 안 정하면 과목마다 첫 단원만',
+  opened(null) === 'extra,flat,h1,m1');
+ok('폴더 밖은 늘 열려 있다', E.openPacks(PACKS, null).has('flat'));
+ok('단원 번호가 없으면 진도 관리 대상이 아니다', E.openPacks(PACKS, null).has('extra'));
+
+ok('수학 1-3까지', opened({ 수학: '1-3' }) === 'extra,flat,h1,m1,m2,m3');
+ok('1-3에서는 1-10이 안 열린다 — 자연 정렬',
+  !E.openPacks(PACKS, { 수학: '1-3' }).has('m10'));
+ok('1-10까지 열면 1-2·1-3도 같이', opened({ 수학: '1-10' }) === 'extra,flat,h1,m1,m10,m2,m3');
+ok('과목마다 따로', opened({ 한국사: '1-2' }) === 'extra,flat,h1,h2,m1');
+ok('진도를 되돌리면 다시 닫힌다 — 사라지는 것은 없다(16.4)',
+  opened({ 수학: '1-1' }) === 'extra,flat,h1,m1');
+
+/* ── 색인 ── */
+group('색인');
+
+const count = idx => Object.keys(idx).filter(k => !k.startsWith('gugudan:')).length;
+ok('진도 없으면 첫 단원의 문제만', count(E.buildIndex(PACKS)) === 4);
+ok('1-3까지 열면 늘어난다', count(E.buildIndex(PACKS, null, { 수학: '1-3' })) === 6);
+ok('부모 화면은 전부 본다', count(E.buildIndexAll(PACKS)) === 8);
+
+ok('제외와 진도는 따로 논다',
+  count(E.buildIndex(PACKS, { problems: [], packs: ['m1'] }, { 수학: '1-3' })) === 5);
+
+ok('내장 구구단은 진도와 상관없다',
+  Object.keys(E.buildIndex(PACKS)).some(k => k.startsWith('gugudan:')));
+
+/* ── 멈추지 않는다 ── */
+group('아이 화면이 빈 채로 멈추지 않는다');
+
+ok('팩이 없어도 구구단은 나온다', Object.keys(E.buildIndex([])).length > 0);
+ok('전부 꺼도 복구된다',
+  Object.keys(E.buildIndex([], { problems: [], packs: ['gugudan'] })).length > 0);
+ok('무한히 돌지 않는다', Object.keys(E.buildIndexAll([])).length > 0);
+
 console.log(`\n${pass}개 통과, ${fail}개 실패`);
 process.exit(fail ? 1 : 0);

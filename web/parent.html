@@ -156,7 +156,7 @@
 </main>
 
 <script type="module">
-import { buildIndex, isRewardable, readLog, weakness } from '/engine.js';
+import { buildIndexAll, openPacks, isRewardable, readLog, weakness } from '/engine.js';
 
 const $ = id => document.getElementById(id);
 const api = (url, opt) => fetch(url, opt).then(r => r.json());
@@ -185,7 +185,7 @@ $('who').innerHTML = boot.profiles.map(p => `<option value="${esc(p.id)}">${esc(
   || '<option value="">아직 없습니다</option>';
 
 const loaded = await Promise.all((boot.packs || []).map(p => api(`/api/pack/${encodeURIComponent(p.id)}`)));
-ALL = buildIndex(loaded);
+ALL = buildIndexAll(loaded);   // 부모는 아직 안 연 단원도 봐야 진도를 정할 수 있다
 
 const packNames = new Map();
 for (const e of Object.values(ALL)) if (!packNames.has(e.packId)) packNames.set(e.packId, e.packName);

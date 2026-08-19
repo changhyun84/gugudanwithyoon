@@ -75,13 +75,14 @@ async function enter(id) {
   P = await api(`/api/profile/${encodeURIComponent(id)}`);
   localStorage.setItem(LAST_ID, id);
   P.disabled ||= { problems: [], packs: [] };
+  P.progress ||= {};                                         // 과목마다 여기까지 열림 (기획서 16.3)
   P.settings ||= { goal: 20, reduceMotion: false };          // v1에서 옮겨온 프로필 대비
   P.collection ||= { stickers: [], boardsCompleted: 0 };
   P.inventory.backgrounds ||= ['day'];
   P.inventory.activeBackground ||= 'day';
   P.wishes ||= [];                                           // 받은 소원권. 지우지 않는다
   P.allowance ||= [];                                        // 바꾼 용돈 기록. 지우지 않는다
-  INDEX = buildIndex(PACKS, P.disabled);   // 부모가 끈 문제는 여기서 빠진다
+  INDEX = buildIndex(PACKS, P.disabled, P.progress);   // 부모가 끈 것과 아직 안 연 단원이 여기서 빠진다
   seedFacts(INDEX, P.facts);
   rollDay();
   const owed = catchUpBoards();   // 도감 보상은 5B에서 생겼다 — 그 전에 모은 것도 준다

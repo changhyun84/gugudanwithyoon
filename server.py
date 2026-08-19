@@ -111,6 +111,7 @@ def new_profile(pid, goal):
         "history": [],
         "collection": {"stickers": [], "boardsCompleted": 0},
         "records": {"speed": {}},
+        "progress": {},   # 과목마다 "여기까지" 열림 (기획서 16.3)
         "shopTier": 1,
         "settings": {"goal": goal, "reduceMotion": False},
     }
