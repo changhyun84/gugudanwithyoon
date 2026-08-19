@@ -1,4 +1,5 @@
 import { ALL_ITEMS, CHARACTERS, GRASS_ICON, ITEMS, STAR_ICON, charById, charSVG, itemById, slotOf, tierOf } from './characters.js';
+import { BACKGROUNDS, bgById, decoSVG, lookOf } from './backgrounds.js';
 import { TARGETS, factKey, buildIndex, packList, pruneLogs, seedFacts, makeQuestion, applyResult } from './engine.js';
 
 const BASE_REWARD = 3;    // 풀어보기만 해도
@@ -13,6 +14,7 @@ let P = null;             // 프로필
 let INDEX = {};           // 문제 전체 (내장 구구단 + 부모 팩) — 부모가 끈 것은 빠져 있다
 let PACKS = [];           // 서버에서 받은 팩 원본. 프로필마다 제외 목록이 달라 다시 짓는다
 let MESSAGES = {};        // content/messages.csv
+let WISHES = [];          // content/wishes.csv — 파일이 없으면 소원권 기능이 안 나타난다
 const recent = [];        // 최근 쓴 응원 5개 — 바로 반복되면 금방 질린다
 const recentKeys = [];    // 최근 낸 문제 3개 — 같은 문제가 연달아 나오지 않게
 let view = 'home', quiz = null, shopTab = 'hat', askedAt = 0, sinceSave = 0, packId = null;
@@ -74,6 +76,9 @@ async function enter(id) {
   P.disabled ||= { problems: [], packs: [] };
   P.settings ||= { goal: 20, reduceMotion: false };          // v1에서 옮겨온 프로필 대비
   P.collection ||= { stickers: [], boardsCompleted: 0 };
+  P.inventory.backgrounds ||= ['day'];
+  P.inventory.activeBackground ||= 'day';
+  P.wishes ||= [];                                           // 받은 소원권. 지우지 않는다
   INDEX = buildIndex(PACKS, P.disabled);   // 부모가 끈 문제는 여기서 빠진다
   seedFacts(INDEX, P.facts);
   rollDay();
@@ -92,8 +97,9 @@ async function start() {
     localStorage.removeItem(PENDING);
   }
 
-  const { profiles, packs, messages } = await api('/api/bootstrap');
+  const { profiles, packs, messages, wishes } = await api('/api/bootstrap');
   MESSAGES = messages || {};
+  WISHES = wishes || [];
   const loaded = await Promise.all((packs || []).map(p => api(`/api/pack/${encodeURIComponent(p.id)}`)));
   PACKS = loaded;
   INDEX = buildIndex(loaded);   // 프로필을 고르면 그 아이의 제외 목록으로 다시 짓는다
@@ -221,6 +227,7 @@ function go(v) {
 }
 
 function render() {
+  applyBG();
   if (!P.characters.names.sheep) renderNaming();
   else if (view === 'pick') renderPick();
   else if (view === 'friends') renderFriends();
@@ -228,6 +235,7 @@ function render() {
   else if (view === 'shop') renderShop();
   else if (view === 'closet') renderCloset();
   else if (view === 'book') renderCollection();
+  else if (view === 'wish') renderWishes();
   else if (view === 'done') renderDone();
   else renderHome();
   bind();
@@ -286,6 +294,7 @@ function renderHome() {
       '<button class="btn soft" data-go="friends">친구들</button>' +
       '<button class="btn soft" data-go="book">도감</button>' +
     '</div>' +
+    (WISHES.length ? '<button class="btn soft mt" data-go="wish">소원권</button>' : '') +
     `<p class="sub center mt2">구구단 ${learned} / ${TARGETS.length}${extra} &nbsp;·&nbsp; 함께한 날 ${P.totals.daysPlayed}일</p>`;
 
   app.querySelector('#play').onclick = () => packList(INDEX).length > 1 ? go('pick') : startQuiz();
@@ -395,6 +404,111 @@ function advance() {
   nextQ();
   renderQuiz();
   bind();
+}
+
+/* ============ 배경 ============ */
+
+/* 배경은 CSS 변수 세 개만 바꾼다. 카드는 늘 흰색이라 카드 안 글자색은 건드리지 않는다.
+   무료 배경은 계절·시간에 따라 저절로 바뀌므로 화면을 그릴 때마다 다시 계산한다. */
+function applyBG() {
+  const look = lookOf(P.inventory.activeBackground || 'day');
+  const root = document.documentElement.style;
+  root.setProperty('--meadow', look.sky);
+  root.setProperty('--meadow-deep', look.deep);
+  root.setProperty('--onpage', look.onpage);
+
+  let layer = document.getElementById('sky');
+  if (!layer) {
+    layer = document.createElement('div');
+    layer.id = 'sky';
+    layer.setAttribute('aria-hidden', 'true');
+    document.body.insertBefore(layer, document.body.firstChild);
+  }
+  const deco = decoSVG(look.deco);
+  layer.innerHTML = deco ? `<svg viewBox="0 0 100 100" preserveAspectRatio="none">${deco}</svg>` : '';
+}
+
+function bgGrid() {
+  let html = '<div class="grid">';
+  BACKGROUNDS.forEach(b => {
+    const own = P.inventory.backgrounds.includes(b.id);
+    const on = P.inventory.activeBackground === b.id;
+    const can = P.wallet.star >= b.star;
+    const look = lookOf(b.id);
+    html += `<div class="item ${on ? 'worn' : ''} ${own || can ? '' : 'locked'}" data-bg="${b.id}">` +
+      `<div class="swatch" style="background:linear-gradient(180deg,${look.sky},${look.deep})">` +
+        (look.deco ? `<svg viewBox="0 0 100 100" preserveAspectRatio="none">${decoSVG(look.deco)}</svg>` : '') +
+      '</div>' +
+      `<div class="nm">${esc(b.nm)}</div>` +
+      (b.auto ? '<div class="st">계절 따라 바뀌어</div>'
+       : own ? `<div class="st">${on ? '지금 이거야' : '이걸로 바꾸기'}</div>`
+       : `<div class="pr ${can ? '' : 'cant'}">${STAR_ICON} ${b.star}</div>`) +
+    '</div>';
+  });
+  return html + '</div>';
+}
+
+function pickBG(id) {
+  const b = bgById(id);
+  if (!P.inventory.backgrounds.includes(id)) {
+    if (P.wallet.star < b.star) return toast(`별이 ${b.star - P.wallet.star}개 더 필요해`);
+    P.wallet.star -= b.star;
+    P.inventory.backgrounds.push(id);
+    toast(say('새아이템') || `${b.nm} 배경을 얻었어!`);
+  }
+  P.inventory.activeBackground = id;
+  save();
+  renderShop();
+  bind();
+}
+
+/* ============ 소원권 ============ */
+
+/* 받은 소원권은 목록에 남는다. "썼다"고 지우지 않는다 —
+   사라지는 것은 회수처럼 느껴지고, 이 게임에서 사라지는 것은 만들지 않는다 (원칙 2.1).
+   부모는 이 목록을 보고 실물로 들어준다. */
+function renderWishes() {
+  const got = [...(P.wishes || [])].reverse();
+
+  let html = topbar(true) +
+    '<div class="card stage">' + me('happy', 'pop') +
+      '<h1 class="sheepname">소원권</h1>' +
+      '<p class="sub">별을 모으면 진짜 소원을 하나 빌 수 있어</p>' +
+    '</div>';
+
+  html += '<div class="wishes">' + WISHES.map(w => {
+    const can = P.wallet.star >= w.star;
+    const mine = got.filter(g => g.id === w.id).length;
+    return `<div class="wish ${can ? '' : 'far'}" data-wish="${esc(w.id)}">` +
+      `<div class="wtext"><div class="wnm">${esc(w.nm)}</div>` +
+      (w.note ? `<div class="wnote">${esc(w.note)}</div>` : '') +
+      (mine ? `<div class="wnote">이미 ${mine}번 받았어</div>` : '') + '</div>' +
+      `<div class="wstar">${STAR_ICON}<span>${w.star}</span></div></div>`;
+  }).join('') + '</div>';
+
+  if (got.length) {
+    html += '<h2 class="center mt2" style="font-size:20px;margin-bottom:2px">받은 소원권</h2>' +
+      '<p class="sub center">엄마 아빠한테 보여주면 돼</p><div class="wishes mt">' +
+      got.map(g => `<div class="wish done"><div class="wtext"><div class="wnm">${esc(g.nm)}</div>` +
+        `<div class="wnote">${esc(g.day)}</div></div><div class="wstar">🎟️</div></div>`).join('') +
+      '</div>';
+  }
+
+  app.innerHTML = html + `<p class="sub center mt2">지금 가진 별 ${P.wallet.star}개</p>`;
+  app.querySelectorAll('[data-wish]').forEach(b => b.onclick = () => useWish(b.dataset.wish));
+}
+
+function useWish(id) {
+  const w = WISHES.find(x => x.id === id);
+  if (!w) return;
+  if (P.wallet.star < w.star) return toast(`별이 ${w.star - P.wallet.star}개 더 필요해`);
+
+  P.wallet.star -= w.star;
+  P.wishes.push({ id: w.id, nm: w.nm, star: w.star, day: today() });
+  save();
+  renderWishes();
+  bind();
+  toast('소원권을 받았어! 엄마 아빠한테 보여줘');
 }
 
 /* ============ 도감 ============ */
@@ -511,17 +625,26 @@ function renderShop() {
   const tabs = Object.entries(ITEMS)
     .map(([slot, list]) => [slot, list.filter(buyable)])
     .filter(([, list]) => list.length);
+  tabs.push(['bg', null]);   // 배경은 별로 사므로 재고 조건이 없다
   if (!tabs.some(([slot]) => slot === shopTab)) shopTab = tabs[0][0];
 
-  const label = { hat: '모자', neck: '목도리', prop: '소품' };
+  const label = { hat: '모자', neck: '목도리', prop: '소품', bg: '배경' };
   const list = tabs.find(([slot]) => slot === shopTab)[1];
 
   let html = topbar(true) + '<h2 class="center" style="margin:2px 0 0">가게</h2>' +
-    '<p class="sub center" style="margin:2px 0 0">문제를 풀면 풀이 쌓여</p>' +
+    `<p class="sub center" style="margin:2px 0 0">${shopTab === 'bg' ? '배경은 별로 살 수 있어' : '문제를 풀면 풀이 쌓여'}</p>` +
     '<div class="tabs">' +
       tabs.map(([slot]) => `<button class="tab ${slot === shopTab ? 'on' : ''}" data-tab="${slot}">${label[slot]}</button>`).join('') +
-    '</div><div class="grid">';
+    '</div>';
 
+  if (shopTab === 'bg') {
+    app.innerHTML = html + bgGrid();
+    app.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { shopTab = b.dataset.tab; renderShop(); bind(); });
+    app.querySelectorAll('[data-bg]').forEach(b => b.onclick = () => pickBG(b.dataset.bg));
+    return;
+  }
+
+  html += '<div class="grid">';
   list.forEach(it => {
     const own = P.inventory.items.includes(it.id);
     const can = P.wallet.grass >= it.price;

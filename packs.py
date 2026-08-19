@@ -64,6 +64,43 @@ def scan_messages(path):
     return out, warnings
 
 
+WISH_HEADERS = {'nm': ['소원', 'wish'], 'star': ['별', 'star'], 'note': ['설명', 'note']}
+
+
+def scan_wishes(path):
+    """소원권 — content/wishes.csv. 파일이 없으면 기능 자체가 안 나타난다(기획서 13.1.1과 같은 방식).
+       별 값이 없거나 숫자가 아니면 그 줄만 건너뛴다 — 게임이 멈추면 안 된다."""
+    if not path.exists():
+        return [], []
+
+    text, enc_warning = read_text(path)
+    reader = csv.reader(io.StringIO(text))
+    header = next(reader, None)
+    warnings = [enc_warning] if enc_warning else []
+    if not header:
+        return [], warnings + ['wishes.csv — 파일이 비어 있습니다.']
+
+    col = {}
+    for i, cell in enumerate(header):
+        key = next((k for k, names in WISH_HEADERS.items() if cell.strip().lower() in names), None)
+        if key:
+            col[key] = i
+    if 'nm' not in col or 'star' not in col:
+        return [], warnings + ['wishes.csv — 첫 줄에 "소원"과 "별" 칸이 필요합니다.']
+
+    get = lambda row, key: row[col[key]].strip() if key in col and col[key] < len(row) else ''
+    out = []
+    for n, row in enumerate(reader, start=2):
+        if not any(cell.strip() for cell in row):
+            continue
+        nm, star = get(row, 'nm'), get(row, 'star')
+        if not nm or not star.isdigit() or not int(star):
+            warnings.append(f'{n}번째 줄 — 소원 이름이 없거나 별이 숫자가 아니어서 건너뛰었습니다.')
+            continue
+        out.append({'id': f'w{n}', 'nm': nm, 'star': int(star), 'note': get(row, 'note')})
+    return out, warnings
+
+
 def slug(stem):
     return re.sub(r'[^가-힣a-zA-Z0-9_-]', '', stem.replace(' ', '-'))[:40] or 'pack'
 

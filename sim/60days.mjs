@@ -40,9 +40,13 @@ const { ALL_ITEMS, CHARACTERS, TIER_NEED } = await import('file://' + join(tmp, 
 /* 캐릭터는 만날 때마다 **전액**을 낸다 (app.js pickChar: wallet.star -= c.star).
    차액으로 계산하면 별 소비가 절반으로 줄어 시뮬레이션이 낙관적으로 나온다. */
 const FRIENDS = CHARACTERS.filter(c => c.star);   // 8+15+25+40 = 88
-const BACKGROUNDS = [5, 5, 6, 7, 8, 8, 10, 10, 12, 12];   // 배경 10종, 각 5~12 — 기획서 8.5 (누적 83)
+writeFileSync(join(tmp, 'backgrounds.mjs'), readFileSync(new URL('../web/backgrounds.js', import.meta.url)));
+const { BACKGROUNDS: BG_LIST } = await import('file://' + join(tmp, 'backgrounds.mjs'));
+const BACKGROUNDS = BG_LIST.filter(b => b.star).map(b => b.star);   // 무료 배경 제외 (누적 83)
 
-function simulate({ story = false, days = DAYS } = {}) {
+const WISH_COST = 12;   // content/wishes.csv 평균
+
+function simulate({ story = false, wishes = true, days = DAYS } = {}) {
   const index = buildIndex(PACKS);
   const facts = {};
   seedFacts(index, facts);
@@ -51,7 +55,7 @@ function simulate({ story = false, days = DAYS } = {}) {
   for (const [k, e] of Object.entries(index)) if (e.rewardable) (keysOf[e.packId] ||= []).push(k);
 
   let grass = 0, star = 0, mastered = 0, stickers = 0, story12 = 0;
-  let starSpent = 0, grassSpent = 0, friends = 0, bg = 0, dryDay = null;
+  let starSpent = 0, grassSpent = 0, friends = 0, bg = 0, dryDay = null, wishCount = 0;
   const recent = [], packDone = new Set(), bought = new Set(), rows = [];
   const met = new Set(['sheep']);
 
@@ -81,7 +85,11 @@ function simulate({ story = false, days = DAYS } = {}) {
       { starSpent += FRIENDS[friends].star; met.add(FRIENDS[friends].id); friends++; }
     while (bg < BACKGROUNDS.length && star - starSpent >= BACKGROUNDS[bg])
       { starSpent += BACKGROUNDS[bg]; bg++; }
-    if (dryDay === null && friends === FRIENDS.length && bg === BACKGROUNDS.length) dryDay = d + 1;
+    // 소원권 — 고갈되지 않는 소비처. 친구·배경을 다 산 뒤 남는 별을 여기서 쓴다
+    if (wishes && friends === FRIENDS.length && bg === BACKGROUNDS.length)
+      while (star - starSpent >= WISH_COST) { starSpent += WISH_COST; wishCount++; }
+
+    if (dryDay === null && friends === FRIENDS.length && bg === BACKGROUNDS.length && !wishes) dryDay = d + 1;
 
     // 열린 선반에서 살 수 있는 것을 싼 것부터. 전용은 그 친구를 만났을 때만
     const tier = TIER_NEED.reduce((t, need, i) => mastered >= need ? i + 1 : t, 1);
@@ -92,12 +100,12 @@ function simulate({ story = false, days = DAYS } = {}) {
       grassSpent += it.price; bought.add(it.id);
     }
 
-    if ([13, 29, 44, 59, 89].includes(d) && d < days)
+    if ([13, 29, 44, 59, 89, 119, 179].includes(d) && d < days)
       rows.push({ 일: d + 1, 마스터: mastered, 별번: star, 별잔고: star - starSpent,
                   친구: 1 + friends, 배경: 1 + bg,
-                  풀번: grass, 풀잔고: grass - grassSpent, 산것: bought.size + '/' + ALL_ITEMS.length });
+                  풀번: grass, 풀잔고: grass - grassSpent, 소원권: wishCount, 산것: bought.size + '/' + ALL_ITEMS.length });
   }
-  return { rows, dryDay, mastered };
+  return { rows, dryDay, mastered, wishCount };
 }
 
 const total = Object.values(buildIndex(PACKS)).filter(e => e.rewardable).length;
@@ -107,8 +115,12 @@ TIER_NEED.forEach((need, i) => {
   if (need > total) console.log(`  ⚠ 상점 ${i + 1}단계 조건 ${need}문제 마스터는 **도달 불가**`);
 });
 
+const noWish = simulate({ wishes: false, days: Math.max(DAYS, 90) });
+console.log(`\n■ 소원권 없이 — 별 소비처가 마르는 날: ${noWish.dryDay ?? '안 마름'}`);
+console.table(noWish.rows);
+
 for (const story of [false, true]) {
   const r = simulate({ story, days: Math.max(DAYS, 90) });
-  console.log(`\n■ ${story ? '5B + 6C 이야기 판까지' : '5B만'}  — 별 소비처가 마르는 날: ${r.dryDay ?? '안 마름'}일`);
+  console.log(`\n■ 소원권 포함 ${story ? '+ 6C 이야기 판까지' : '(지금 상태)'}  — 바꾼 소원권 ${r.wishCount}장`);
   console.table(r.rows);
 }

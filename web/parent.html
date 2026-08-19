@@ -103,6 +103,13 @@
   </section>
 
   <section>
+    <h2>소원권</h2>
+    <p class="hint">아이가 별로 바꾼 소원입니다. <b>목록은 지워지지 않습니다</b> — 들어주신 뒤에도 기념으로 남습니다.
+      소원 종류는 <code>content/wishes.csv</code>에서 고치세요.</p>
+    <div id="wishes">불러오는 중…</div>
+  </section>
+
+  <section>
     <h2>문제 팩</h2>
     <p class="hint"><code>content\problems</code> 폴더의 CSV·MD 파일입니다. 저장하면 바로 반영되고,
       아이패드에서 새로고침만 하면 됩니다. 아래 목록이 안 보이면 PIN을 확인하세요.</p>
@@ -142,6 +149,7 @@ const WEEKDAY = ['일','월','화','수','목','금','토'];
 
 let ALL = {};                              // 제외 없이 지은 전체 문제 색인
 let PROFILE = null;
+let WISHDATA = null;   // /api/parent/packs가 같이 실어 보낸다
 let OFF = { problems: [], packs: [] };
 let picked = null, dirty = false;
 
@@ -171,6 +179,7 @@ async function showStat() {
   PROFILE = await api(`/api/profile/${encodeURIComponent(id)}`);
   OFF = { problems: [...(PROFILE.disabled?.problems || [])],
           packs: [...(PROFILE.disabled?.packs || [])] };
+  if (WISHDATA) showWishes(WISHDATA);   // 아이를 바꾸면 소원권 목록도 따라간다
   dirty = false;
 
   const p = PROFILE;
@@ -416,9 +425,36 @@ async function showPacks() {
       <b>${esc(p.file)}</b> — 문제 ${p.count}개
       ${p.warnings.map(w => `<div class="warn">· ${esc(w)}</div>`).join('')}
     </div>`).join('');
+
+  WISHDATA = res.wishes;
+  showWishes(WISHDATA);
 }
 showPacks();
 $('reload').onclick = showPacks;
+
+/* ============ 소원권 ============ */
+
+function showWishes(w) {
+  if (!w || !w.list.length) {
+    $('wishes').innerHTML = '<p class="hint">아직 <code>content/wishes.csv</code>가 없습니다. ' +
+      '파일을 만들면 아이 화면에 소원권이 생깁니다. 없으면 그 기능은 나타나지 않습니다.</p>' +
+      (w ? w.warnings.map(x => `<div class="warn">· ${esc(x)}</div>`).join('') : '');
+    return;
+  }
+
+  const got = PROFILE?.wishes || [];
+  const count = id => got.filter(g => g.id === id).length;
+
+  $('wishes').innerHTML =
+    '<div class="pack"><b>지금 걸어둔 소원</b>' +
+    w.list.map(x => `<div>· ${esc(x.nm)} — 별 ${x.star}` +
+      (count(x.id) ? ` <b>(${count(x.id)}번 바꿔감)</b>` : '') + '</div>').join('') +
+    w.warnings.map(x => `<div class="warn">· ${esc(x)}</div>`).join('') + '</div>' +
+    (got.length
+      ? '<div class="pack"><b>아이가 바꾼 소원</b>' +
+        [...got].reverse().map(g => `<div>· ${esc(g.day)} — ${esc(g.nm)} (별 ${g.star})</div>`).join('') + '</div>'
+      : '<p class="hint">아직 바꾼 소원이 없습니다.</p>');
+}
 
 $('saveSet').onclick = async () => {
   const res = await api('/api/parent/settings', {

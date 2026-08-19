@@ -63,6 +63,11 @@ def load_messages():
     return packs.scan_messages(CONTENT / "messages.csv")
 
 
+def load_wishes():
+    """소원권 — 파일이 없으면 빈 목록. 그러면 아이 화면에 기능이 안 나타난다"""
+    return packs.scan_wishes(CONTENT / "wishes.csv")
+
+
 def load_settings():
     return {**DEFAULT_SETTINGS, **(read_json(SETTINGS_PATH) or {})}
 
@@ -135,6 +140,7 @@ class Handler(BaseHTTPRequestHandler):
                 "settings": self.public_settings(),
                 "packs": [{"id": p["id"], "name": p["name"], "count": p["count"]} for p in load_packs() if p["count"]],
                 "messages": load_messages()[0],
+                "wishes": load_wishes()[0],
             })
         elif path.startswith("/api/pack/"):
             self.get_pack(path.rsplit("/", 1)[1])
@@ -175,10 +181,11 @@ class Handler(BaseHTTPRequestHandler):
     def get_parent_packs(self):
         if not self.parent_ok():
             return self.send_json({"error": "PIN이 다릅니다"}, 403)
-        warnings = load_messages()[1]
+        wishes, wish_warnings = load_wishes()
         self.send_json({
             "packs": [{k: p[k] for k in ("id", "name", "file", "count", "warnings")} for p in load_packs()],
-            "messages": {"file": "messages.csv", "warnings": warnings},
+            "messages": {"file": "messages.csv", "warnings": load_messages()[1]},
+            "wishes": {"file": "wishes.csv", "list": wishes, "warnings": wish_warnings},
         })
 
     def get_profile(self, pid):

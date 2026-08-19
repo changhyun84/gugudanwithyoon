@@ -27,7 +27,7 @@
 ## 지금 상태
 
 **완료** — 서버 뼈대 / v1 이식 / 문제 팩 / 캐릭터 5종 + 응원 메시지 / 계측·부모 현황·문제 켜고 끄기
-**다음** — 5B 보상 확장 (도감·상점 완료 / 배경 10종 + 소원권, 용돈)
+**다음** — 5B 보상 확장 (도감·상점·배경·소원권 완료 / 용돈만 남음)
 **그 뒤** — 6A 단답형 → 6B 사진으로 단어 등록 → 6C 서술형 → 6D 서술형 AI 반응 → 7 모드 확장 → 8 마감
 
 > 6A~6D는 아이가 요청한 확장(단답형·서술형·영어 단어)입니다.
@@ -44,11 +44,11 @@
 ```
 server.py     HTTP + 프로필 저장
 packs.py      CSV/MD 파서
-web/          app.js · engine.js · characters.js · styles.css · index.html · parent.html
-content/      problems/*.csv|md · messages.csv
+web/          app.js · engine.js · characters.js · backgrounds.js · styles.css · index.html · parent.html
+content/      problems/*.csv|md · messages.csv · wishes.csv
 data/         자동 생성, git 제외
 sim/          60days.mjs  (보상 균형 시뮬레이션 — 보상을 건드리기 전에 반드시)
-test/         t_book.mjs · t_shop.mjs  (jsdom 없이 돎) · t_engine.mjs·t_app.mjs는 아직 없음
+test/         t_book.mjs · t_shop.mjs · t_wish.mjs  (jsdom 없이 돎)
 ```
 
 `ai.py`는 6B에서 새로 생깁니다. **`server.py`에 합치지 마세요** — 외부 호출은 실패하는 코드라 격리합니다.
@@ -86,7 +86,8 @@ test/         t_book.mjs · t_shop.mjs  (jsdom 없이 돎) · t_engine.mjs·t_ap
 ```
 node test/t_book.mjs       # 30개 — 도감. 판 보상이 줄어드는 경로가 없는지
 node test/t_shop.mjs       # 31개 — 상점 단계·전용 아이템. 선반이 닫히는 경로가 없는지
-node sim/60days.mjs        # 보상 균형. characters.js에서 가격표를 그대로 읽는다
+node test/t_wish.mjs       # 33개 — 배경·소원권. 받은 소원권이 사라지지 않는지
+node sim/60days.mjs 180    # 보상 균형. 가격표를 characters.js·backgrounds.js에서 그대로 읽는다
 ```
 
 5A 때 쓰던 `t_engine.mjs`·`t_app.mjs`는 저장소에 없습니다. 없는 채로 진행하기로 했으니, 손으로 확인할 것을 각 단계마다 정해두고 시작하세요. 특히 6A(채점 규칙)는 눈으로 다 못 봅니다.
@@ -109,6 +110,7 @@ cp web/characters.js /tmp/ch.mjs && node --input-type=module -e "import('/tmp/ch
 
 ## 첫 작업 지시 예시
 
-> `기획서.md`와 `구현-현황.md` 13장을 읽고, 5B의 다음 항목인 배경과 소원권을 만들어줘.
-> 배경 10종(각 별 5~12)과 소원권은 **같이** 넣어야 해 — 배경만 넣으면 두 달 뒤 별이 죽어(13.2).
-> 넣기 전후로 `node sim/60days.mjs`를 돌려서 별 잔고가 0에 닿는 날이 90일 이후인지 봐줘.
+> `기획서.md`와 `구현-현황.md` 16장을 읽고, 5B의 마지막인 용돈을 만들어줘.
+> 용돈은 **풀 🌿**이야 — 별로 사게 하면 "틀리면 돈을 못 번다"가 돼서 원칙 2.2가 무너져.
+> 주 1회 정해진 요일에만 바꿀 수 있게 하고, 기본은 꺼짐이야.
+> 넣기 전후로 `node sim/60days.mjs 180`을 돌려서 풀 잔고가 계속 쌓이지 않는지 봐줘.
