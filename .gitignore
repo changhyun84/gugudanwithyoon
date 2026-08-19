@@ -5,6 +5,7 @@ data/
 *.tmp
 __pycache__/
 *.pyc
+.idea
 
 # OS
 .DS_Store

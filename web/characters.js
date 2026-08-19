@@ -1,6 +1,10 @@
 /* 캐릭터와 아이템 그리기.
    아이템 SVG는 양 기준 좌표(모자 100,30 / 목 100,96)로 한 벌만 그리고,
-   캐릭터마다 앵커 차이만큼 옮겨서 붙인다. */
+   캐릭터마다 앵커 차이만큼 옮기고 배율만큼 키워서 붙인다.
+
+   양은 v1부터 아이가 좋아한 그림이라 손대지 않았다.
+   나머지 넷은 '아기 비례'로 다시 그렸다 — 머리가 몸보다 크고,
+   눈이 얼굴 한가운데보다 아래에 크고 멀리 벌어져 있는 것. 이 셋이 귀여움의 대부분이다. */
 
 export const GRASS_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 21c0-5 0-8 0-8" stroke="#527B34" stroke-width="2" stroke-linecap="round" fill="none"/><path d="M12 14c-1-5-4-7-8-8 1 6 4 8 8 8z" fill="#6FA349"/><path d="M12 14c1-5 4-7 8-8-1 6-4 8-8 8z" fill="#8CBF63"/><path d="M12 17c-.6-3-2.4-4.4-5-5 .6 3.6 2.4 5 5 5z" fill="#7FB456"/></svg>';
 
@@ -29,12 +33,14 @@ export const isHat = id => HATS.some(h => h.id === id);
 export const itemById = id => HATS.concat(SCARVES).find(x => x.id === id);
 
 /* 캐릭터 — 해금 순서대로 */
+/* anchor: [x, y, 배율] — 배율은 생략하면 1.
+   넷은 머리가 커진 만큼 아이템도 같이 커져야 한다. 배율이 없으면 왕관이 모자처럼 보인다. */
 export const CHARACTERS = [
-  { id: 'sheep',    nm: '양',       star: 0,  anchor: { hat: [100, 30], neck: [100, 96] } },
-  { id: 'cat',      nm: '고양이',   star: 8,  anchor: { hat: [100, 24], neck: [100, 100] } },
-  { id: 'rabbit',   nm: '토끼',     star: 15, anchor: { hat: [100, 44], neck: [100, 106] } },
-  { id: 'koala',    nm: '코알라',   star: 25, anchor: { hat: [100, 28], neck: [100, 100] } },
-  { id: 'capybara', nm: '카피바라', star: 40, anchor: { hat: [100, 34], neck: [100, 104] } }
+  { id: 'sheep',    nm: '양',       star: 0,  anchor: { hat: [100, 30],       neck: [100, 96] } },
+  { id: 'cat',      nm: '고양이',   star: 8,  anchor: { hat: [100, 46, 1.28], neck: [100, 111, 1.26] } },
+  { id: 'rabbit',   nm: '토끼',     star: 15, anchor: { hat: [100, 51, 1.22], neck: [100, 112, 1.24] } },
+  { id: 'koala',    nm: '코알라',   star: 25, anchor: { hat: [100, 47, 1.30], neck: [100, 110, 1.28] } },
+  { id: 'capybara', nm: '카피바라', star: 40, anchor: { hat: [100, 50, 1.32], neck: [100, 115, 1.30] } }
 ];
 
 export const charById = id => CHARACTERS.find(c => c.id === id) || CHARACTERS[0];
@@ -100,11 +106,13 @@ function scarfSVG(id) {
   return '';
 }
 
-/* 양 앵커와의 차이만큼 아이템을 옮긴다 */
+/* 양 기준으로 그린 아이템을 그 캐릭터의 앵커점으로 옮기고, 앵커점을 중심으로 키운다.
+   translate(a) scale(s) translate(-b) 는 b점을 a로 보내면서 a를 중심으로 s배 하는 것과 같다. */
 function place(svg, anchor, base) {
   if (!svg) return '';
-  const dx = anchor[0] - base[0], dy = anchor[1] - base[1];
-  return dx || dy ? `<g transform="translate(${dx},${dy})">${svg}</g>` : svg;
+  const [ax, ay, s = 1] = anchor, [bx, by] = base;
+  if (ax === bx && ay === by && s === 1) return svg;
+  return `<g transform="translate(${ax},${ay}) scale(${s}) translate(${-bx},${-by})">${svg}</g>`;
 }
 
 /* ── 공통 파츠 ─────────────────────────────────────── */
@@ -128,10 +136,40 @@ function eyes(mood, y = 66, r = 5.6) {
          `<circle cx="89.8" cy="${y - 2}" r="1.9" fill="#fff"/><circle cx="113.8" cy="${y - 2}" r="1.9" fill="#fff"/>`;
 }
 
-/* 졸린 눈 (코알라·카피바라) */
-const sleepyEyes = (y = 68) =>
-  `<path d="M82 ${y} q6 5 12 0" stroke="#3A3129" stroke-width="3.6" stroke-linecap="round" fill="none"/>` +
-  `<path d="M106 ${y} q6 5 12 0" stroke="#3A3129" stroke-width="3.6" stroke-linecap="round" fill="none"/>`;
+/* ── 아기 비례 파츠 (양 외 4종) ──────────────────────
+   다리 넷을 세우지 않고 앞발 둘만 둔다. 넷은 어른 동물, 둘은 아기처럼 보인다. */
+
+const paws = (fill, line) =>
+  `<ellipse cx="78" cy="162" rx="14" ry="11.5" fill="${fill}" stroke="${line}" stroke-width="2"/>` +
+  `<ellipse cx="122" cy="162" rx="14" ry="11.5" fill="${fill}" stroke="${line}" stroke-width="2"/>`;
+
+/* 크고 동그란 눈. 하이라이트 두 개(큰 것 + 작은 것)가 귀여움의 절반이다.
+   sx는 눈 사이 벌어짐 — 클수록 어리게 보인다. 코가 큰 코알라는 더 벌린다. */
+function bigEyes(mood, y = 84, r = 9, sx = 16) {
+  const l = 100 - sx, rt = 100 + sx;
+  if (mood === 'happy')
+    return `<path d="M${l - 10} ${y + 1} q10 -13 20 0" stroke="#3A3129" stroke-width="4.6" stroke-linecap="round" fill="none"/>` +
+           `<path d="M${rt - 10} ${y + 1} q10 -13 20 0" stroke="#3A3129" stroke-width="4.6" stroke-linecap="round" fill="none"/>`;
+  return `<ellipse cx="${l}" cy="${y}" rx="${r}" ry="${r + 1.2}" fill="#3A3129"/>` +
+         `<ellipse cx="${rt}" cy="${y}" rx="${r}" ry="${r + 1.2}" fill="#3A3129"/>` +
+         `<circle cx="${l - 3.2}" cy="${y - 3.4}" r="3.3" fill="#fff"/>` +
+         `<circle cx="${rt - 3.2}" cy="${y - 3.4}" r="3.3" fill="#fff"/>` +
+         `<circle cx="${l + 3.4}" cy="${y + 3.8}" r="1.7" fill="#fff" opacity=".85"/>` +
+         `<circle cx="${rt + 3.4}" cy="${y + 3.8}" r="1.7" fill="#fff" opacity=".85"/>`;
+}
+
+/* 졸린 눈 (코알라·카피바라) — 감은 눈도 크게 그려야 얼굴에 묻히지 않는다 */
+const sleepyBig = (y = 84, sx = 16) =>
+  `<path d="M${90 - sx} ${y} q10 9 20 0" stroke="#3A3129" stroke-width="4.2" stroke-linecap="round" fill="none"/>` +
+  `<path d="M${90 + sx} ${y} q10 9 20 0" stroke="#3A3129" stroke-width="4.2" stroke-linecap="round" fill="none"/>`;
+
+const cheeks = (y = 97, c = '#F0A6A0', sx = 34) =>
+  `<ellipse cx="${100 - sx}" cy="${y}" rx="9.5" ry="5.8" fill="${c}" opacity=".6"/>` +
+  `<ellipse cx="${100 + sx}" cy="${y}" rx="9.5" ry="5.8" fill="${c}" opacity=".6"/>`;
+
+const smile = (y = 101, c = '#6B5A48') =>
+  `<path d="M100 ${y - 5} v4" stroke="${c}" stroke-width="2.4" stroke-linecap="round" fill="none"/>` +
+  `<path d="M100 ${y} q-6 6 -11 1 M100 ${y} q6 6 11 1" stroke="${c}" stroke-width="2.6" stroke-linecap="round" fill="none"/>`;
 
 /* ── 캐릭터별 그리기 ───────────────────────────────── */
 
@@ -152,73 +190,84 @@ const DRAW = {
       '<path d="M94 80 q6 6 12 0" stroke="#6B5A48" stroke-width="2.4" stroke-linecap="round" fill="none"/>';
   },
 
+  /* 시크한 츤데레 — 눈은 크게, 볼터치로 차가움을 덜어낸다 */
   cat(mood) {
-    const fur = '#AEB5C0', line = '#8D95A3', belly = '#EDEFF3', ear = '#E8A9B4';
-    const stripes = '<path d="M78 96 q10 -5 0 -10 M78 116 q10 -5 0 -10 M122 96 q-10 -5 0 -10 M122 116 q-10 -5 0 -10" ' +
-      `stroke="${line}" stroke-width="3" stroke-linecap="round" fill="none"/>`;
-    return shadow + legs('#9AA2AE') +
-      `<path d="M148 150 q22 -6 16 -30 q-4 -16 -18 -14" stroke="${fur}" stroke-width="13" stroke-linecap="round" fill="none"/>` +
-      `<ellipse cx="100" cy="112" rx="46" ry="40" fill="${fur}" stroke="${line}" stroke-width="2"/>` +
-      `<ellipse cx="100" cy="122" rx="26" ry="27" fill="${belly}"/>` + stripes +
-      `<path d="M74 44 L70 12 L96 30 Z" fill="${fur}" stroke="${line}" stroke-width="2" stroke-linejoin="round"/>` +
-      `<path d="M126 44 L130 12 L104 30 Z" fill="${fur}" stroke="${line}" stroke-width="2" stroke-linejoin="round"/>` +
-      `<path d="M77 40 L75 22 L91 33 Z" fill="${ear}"/><path d="M123 40 L125 22 L109 33 Z" fill="${ear}"/>` +
-      `<ellipse cx="100" cy="62" rx="36" ry="31" fill="${fur}" stroke="${line}" stroke-width="2"/>` +
-      `<path d="M72 46 q8 6 14 3 M128 46 q-8 6 -14 3" stroke="${line}" stroke-width="2.4" fill="none"/>` +
-      (mood === 'happy' ? eyes('happy', 62)
-        : '<ellipse cx="87" cy="62" rx="5.4" ry="7" fill="#3A3129"/><ellipse cx="113" cy="62" rx="5.4" ry="7" fill="#3A3129"/>' +
-          '<circle cx="88.6" cy="59" r="1.9" fill="#fff"/><circle cx="114.6" cy="59" r="1.9" fill="#fff"/>') +
-      '<path d="M100 72 l-5 4 h10 z" fill="#E88FA0"/>' +
-      '<path d="M100 76 v3 M100 79 q-5 5 -10 1 M100 79 q5 5 10 1" stroke="#6B5A48" stroke-width="2.2" stroke-linecap="round" fill="none"/>' +
-      '<path d="M64 66 h-18 M64 72 h-16 M136 66 h18 M136 72 h16" stroke="#8D95A3" stroke-width="1.8" stroke-linecap="round"/>';
+    const fur = '#C7CFDE', line = '#A3ACC0', belly = '#F2F5FA', inner = '#F2AFBD';
+    const tail = 'M136 146 q34 2 34 -25 q0 -20 -16 -20';
+    return shadow +
+      `<path d="${tail}" fill="none" stroke="${line}" stroke-width="15" stroke-linecap="round"/>` +
+      `<path d="${tail}" fill="none" stroke="${fur}" stroke-width="11" stroke-linecap="round"/>` +
+      `<ellipse cx="100" cy="137" rx="37" ry="31" fill="${fur}" stroke="${line}" stroke-width="2"/>` +
+      `<ellipse cx="100" cy="143" rx="21" ry="21" fill="${belly}"/>` +
+      paws(fur, line) +
+      `<path d="M68 54 L77 18 L100 40 Z" fill="${fur}" stroke="${line}" stroke-width="2.5" stroke-linejoin="round"/>` +
+      `<path d="M132 54 L123 18 L100 40 Z" fill="${fur}" stroke="${line}" stroke-width="2.5" stroke-linejoin="round"/>` +
+      `<path d="M75 49 L80 29 L94 42 Z" fill="${inner}"/>` +
+      `<path d="M125 49 L120 29 L106 42 Z" fill="${inner}"/>` +
+      `<ellipse cx="100" cy="78" rx="41" ry="37" fill="${fur}" stroke="${line}" stroke-width="2"/>` +
+      `<path d="M85 55 q15 -7 30 0" stroke="${line}" stroke-width="2.4" stroke-linecap="round" fill="none"/>` +
+      bigEyes(mood, 86, 9, 17) + cheeks(99, '#EFA6A8') +
+      '<path d="M100 94 l-6.5 5.5 h13 z" fill="#EE93A6"/>' +
+      smile(103) +
+      `<path d="M60 86 h-17 M60 93 h-15 M140 86 h17 M140 93 h15" stroke="${line}" stroke-width="2" stroke-linecap="round"/>`;
   },
 
+  /* 활발하고 신남 — 귀를 살짝 벌려 세우면 표정이 밝아진다 */
   rabbit(mood) {
-    const fur = '#FBF4EF', line = '#E3D6CC', inner = '#F3C0CC';
-    return shadow + legs('#E0D2C6') +
-      `<ellipse cx="100" cy="112" rx="46" ry="40" fill="${fur}" stroke="${line}" stroke-width="2"/>` +
-      `<circle cx="152" cy="128" r="14" fill="${fur}" stroke="${line}" stroke-width="2"/>` +
-      `<ellipse cx="82" cy="26" rx="11" ry="32" fill="${fur}" stroke="${line}" stroke-width="2" transform="rotate(-9 82 26)"/>` +
-      `<ellipse cx="118" cy="26" rx="11" ry="32" fill="${fur}" stroke="${line}" stroke-width="2" transform="rotate(9 118 26)"/>` +
-      `<ellipse cx="82" cy="28" rx="5" ry="22" fill="${inner}" transform="rotate(-9 82 28)"/>` +
-      `<ellipse cx="118" cy="28" rx="5" ry="22" fill="${inner}" transform="rotate(9 118 28)"/>` +
-      `<ellipse cx="100" cy="70" rx="34" ry="30" fill="${fur}" stroke="${line}" stroke-width="2"/>` +
-      eyes(mood, 68) + blush(82) +
-      '<path d="M100 78 l-5 4 h10 z" fill="#E88FA0"/>' +
-      '<path d="M100 82 v3 M100 85 q-5 5 -9 1 M100 85 q5 5 9 1" stroke="#8A7566" stroke-width="2.2" stroke-linecap="round" fill="none"/>' +
-      '<rect x="94" y="88" width="5" height="7" rx="2" fill="#fff" stroke="#E3D6CC" stroke-width="1"/>' +
-      '<rect x="101" y="88" width="5" height="7" rx="2" fill="#fff" stroke="#E3D6CC" stroke-width="1"/>';
+    const fur = '#FFF8F3', line = '#E7D6CA', inner = '#F7B7C6';
+    return shadow +
+      `<ellipse cx="100" cy="137" rx="36" ry="31" fill="${fur}" stroke="${line}" stroke-width="2"/>` +
+      `<circle cx="140" cy="152" r="15" fill="${fur}" stroke="${line}" stroke-width="2"/>` +
+      paws(fur, line) +
+      `<ellipse cx="79" cy="27" rx="13" ry="31" fill="${fur}" stroke="${line}" stroke-width="2" transform="rotate(-13 79 27)"/>` +
+      `<ellipse cx="121" cy="27" rx="13" ry="31" fill="${fur}" stroke="${line}" stroke-width="2" transform="rotate(13 121 27)"/>` +
+      `<ellipse cx="79" cy="29" rx="6" ry="21" fill="${inner}" transform="rotate(-13 79 29)"/>` +
+      `<ellipse cx="121" cy="29" rx="6" ry="21" fill="${inner}" transform="rotate(13 121 29)"/>` +
+      `<ellipse cx="100" cy="80" rx="40" ry="36" fill="${fur}" stroke="${line}" stroke-width="2"/>` +
+      bigEyes(mood, 87, 9, 17) + cheeks(101, '#F4A8B4', 33) +
+      '<path d="M100 97 l-6.5 5.5 h13 z" fill="#EE93A6"/>' +
+      smile(106, '#8A7566') +
+      `<rect x="93" y="110" width="6.6" height="9.5" rx="2.8" fill="#fff" stroke="${line}" stroke-width="1.2"/>` +
+      `<rect x="100.4" y="110" width="6.6" height="9.5" rx="2.8" fill="#fff" stroke="${line}" stroke-width="1.2"/>`;
   },
 
+  /* 늘 졸림 — 큰 코가 정체성이라 눈을 더 벌려 자리를 만든다 */
   koala(mood) {
-    const fur = '#A7B0BA', line = '#8A939E', ear = '#C9D2DA', belly = '#DFE5EA';
-    return shadow + legs('#959EA9') +
-      `<circle cx="58" cy="58" r="26" fill="${fur}" stroke="${line}" stroke-width="2"/>` +
-      `<circle cx="142" cy="58" r="26" fill="${fur}" stroke="${line}" stroke-width="2"/>` +
-      `<circle cx="58" cy="58" r="16" fill="${ear}"/><circle cx="142" cy="58" r="16" fill="${ear}"/>` +
-      `<ellipse cx="100" cy="116" rx="46" ry="38" fill="${fur}" stroke="${line}" stroke-width="2"/>` +
-      `<ellipse cx="100" cy="124" rx="27" ry="26" fill="${belly}"/>` +
-      `<ellipse cx="100" cy="66" rx="37" ry="33" fill="${fur}" stroke="${line}" stroke-width="2"/>` +
-      (mood === 'happy' ? eyes('happy', 64) : sleepyEyes(64)) +
-      '<ellipse cx="100" cy="80" rx="13" ry="15" fill="#4A4038"/>' +
-      '<ellipse cx="96" cy="76" rx="3.4" ry="4" fill="#6E6157" opacity=".8"/>' +
-      '<path d="M92 98 q8 5 16 0" stroke="#6B5A48" stroke-width="2.2" stroke-linecap="round" fill="none"/>' +
-      (mood === 'happy' ? '' : '<text x="140" y="34" font-size="17" fill="#8A939E" opacity=".75">z</text>' +
-        '<text x="152" y="20" font-size="13" fill="#8A939E" opacity=".55">z</text>');
+    const fur = '#BAC4D2', line = '#97A2B2', ear = '#DEE5EE', belly = '#E5EBF1';
+    return shadow +
+      `<circle cx="55" cy="66" r="28" fill="${fur}" stroke="${line}" stroke-width="2"/>` +
+      `<circle cx="145" cy="66" r="28" fill="${fur}" stroke="${line}" stroke-width="2"/>` +
+      `<circle cx="55" cy="66" r="17.5" fill="${ear}"/><circle cx="145" cy="66" r="17.5" fill="${ear}"/>` +
+      `<ellipse cx="100" cy="138" rx="37" ry="30" fill="${fur}" stroke="${line}" stroke-width="2"/>` +
+      `<ellipse cx="100" cy="144" rx="22" ry="21" fill="${belly}"/>` +
+      paws(fur, line) +
+      `<ellipse cx="100" cy="78" rx="40" ry="36" fill="${fur}" stroke="${line}" stroke-width="2"/>` +
+      (mood === 'happy' ? bigEyes('happy', 82, 9, 24) : sleepyBig(82, 24)) +
+      '<ellipse cx="100" cy="96" rx="13.5" ry="14.5" fill="#4A4038"/>' +
+      '<ellipse cx="95.5" cy="91" rx="3.6" ry="4.2" fill="#7A6C60" opacity=".7"/>' +
+      cheeks(92, '#E9A6A8', 32) +
+      '<path d="M92 114 q8 6 16 0" stroke="#6B5A48" stroke-width="2.6" stroke-linecap="round" fill="none"/>' +
+      (mood === 'happy' ? '' :
+        `<text x="148" y="24" font-size="20" fill="${line}" opacity=".7">z</text>` +
+        `<text x="163" y="8" font-size="14" fill="${line}" opacity=".5">z</text>`);
   },
 
+  /* 초연하고 태평 — 네모난 얼굴이 정체성이라 없애지 않고, 모서리만 아주 둥글게 굴린다 */
   capybara(mood) {
-    const fur = '#B98A5E', line = '#9A7049', muzzle = '#CBA179';
-    return shadow + legs('#A5794F') +
-      `<ellipse cx="100" cy="114" rx="50" ry="38" fill="${fur}" stroke="${line}" stroke-width="2"/>` +
-      `<ellipse cx="72" cy="40" rx="9" ry="7" fill="${fur}" stroke="${line}" stroke-width="2"/>` +
-      `<ellipse cx="128" cy="40" rx="9" ry="7" fill="${fur}" stroke="${line}" stroke-width="2"/>` +
-      `<rect x="64" y="42" width="72" height="52" rx="24" fill="${fur}" stroke="${line}" stroke-width="2"/>` +
-      `<rect x="78" y="70" width="44" height="26" rx="13" fill="${muzzle}"/>` +
-      (mood === 'happy' ? eyes('happy', 60) : sleepyEyes(60)) +
-      '<ellipse cx="100" cy="78" rx="8" ry="5" fill="#5C4634"/>' +
-      '<path d="M100 83 v4 M100 87 q-6 4 -11 0 M100 87 q6 4 11 0" stroke="#6B5A48" stroke-width="2.2" stroke-linecap="round" fill="none"/>' +
-      '<path d="M64 60 h-14 M136 60 h14" stroke="#9A7049" stroke-width="1.8" stroke-linecap="round"/>';
+    const fur = '#C89A6E', line = '#A67A50', muzzle = '#DCB68F', belly = '#D8B189';
+    return shadow +
+      `<ellipse cx="100" cy="140" rx="40" ry="30" fill="${fur}" stroke="${line}" stroke-width="2"/>` +
+      `<ellipse cx="100" cy="146" rx="23" ry="20" fill="${belly}" opacity=".55"/>` +
+      paws(fur, line) +
+      `<ellipse cx="69" cy="45" rx="11" ry="9" fill="${fur}" stroke="${line}" stroke-width="2"/>` +
+      `<ellipse cx="131" cy="45" rx="11" ry="9" fill="${fur}" stroke="${line}" stroke-width="2"/>` +
+      `<rect x="58" y="44" width="84" height="70" rx="31" fill="${fur}" stroke="${line}" stroke-width="2"/>` +
+      (mood === 'happy' ? bigEyes('happy', 76, 9, 21) : sleepyBig(76, 21)) +
+      `<rect x="76" y="86" width="48" height="28" rx="14" fill="${muzzle}"/>` +
+      '<ellipse cx="100" cy="96" rx="9" ry="6" fill="#5C4634"/>' +
+      cheeks(88, '#DFA07E', 33) +
+      '<path d="M100 103 v4 M100 107 q-7 5 -12 0 M100 107 q7 5 12 0" stroke="#6B5A48" stroke-width="2.5" stroke-linecap="round" fill="none"/>' +
+      `<path d="M58 78 h-14 M142 78 h14" stroke="${line}" stroke-width="2" stroke-linecap="round"/>`;
   }
 };
 
