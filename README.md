@@ -27,7 +27,7 @@
 ## 지금 상태
 
 **완료** — 서버 뼈대 / v1 이식 / 문제 팩 / 캐릭터 5종 / 계측·부모 현황 / **5B 보상 확장** / **5C 학습 진도 관리**
-**다음** — 6A 단답형
+**다음** — 6A 단답형 (또는 친구들에게 정적 배포 — `구현-현황.md` 23.7)
 **그 뒤** — 6A 단답형 → 6B 사진으로 단어 등록 → 6C 서술형 → 6D 서술형 AI 반응 → 7 모드 확장 → 8 마감
 
 > 6A~6D는 아이가 요청한 확장(단답형·서술형·영어 단어)입니다.
@@ -41,6 +41,7 @@
 - 캐릭터 5종(양·고양이·토끼·코알라·카피바라)은 별로 해금. **아이템은 앵커 + 배율로 공용**
 - 넷은 2026-08-19에 아기 비례로 다시 그렸습니다 (`구현-현황.md` 11장). **양은 손대지 마세요**
 - 부모는 `/parent`에서 최근 7일·어려워하는 문제를 보고, 문제를 **끌** 수 있음 (지우는 게 아님)
+- **기록 내보내기·되돌리기**가 `/parent`에 있음. 홈 화면 추가(PWA)도 됨
 
 ```
 server.py     HTTP + 프로필 저장
@@ -48,8 +49,8 @@ packs.py      CSV/MD 파서
 web/          app.js · engine.js · characters.js · backgrounds.js · styles.css · index.html · parent.html
 content/      problems/*.csv|md · messages.csv · wishes.csv
 data/         자동 생성, git 제외
-sim/          60days.mjs  (보상 균형 시뮬레이션 — 보상을 건드리기 전에 반드시)
-test/         t_book · t_shop · t_wish · t_allow · t_units  .mjs  (jsdom 없이 돎)
+sim/          60days.mjs  (보상 균형) · make-icons.py  (홈 화면 아이콘)
+test/         t_book · t_shop · t_wish · t_allow · t_units · t_backup  .mjs
 ```
 
 `ai.py`는 6B에서 새로 생깁니다. **`server.py`에 합치지 마세요** — 외부 호출은 실패하는 코드라 격리합니다.
@@ -90,6 +91,7 @@ node test/t_shop.mjs       # 31개 — 상점 단계·전용 아이템. 선반�
 node test/t_wish.mjs       # 33개 — 배경·소원권. 받은 소원권이 사라지지 않는지
 node test/t_allow.mjs      # 24개 — 용돈. 화폐가 풀인지, 주 1회인지
 node test/t_units.mjs      # 59개 — 과목·단원·진도·자유 모드
+node test/t_backup.mjs     # 34개 — 내보내기·되돌리기·PWA
 node sim/60days.mjs 180    # 보상 균형. 가격표를 characters.js·backgrounds.js에서 그대로 읽는다
 ```
 

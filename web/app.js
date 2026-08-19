@@ -273,6 +273,24 @@ function renderNaming() {
   app.querySelector('#nm').addEventListener('keydown', e => { if (e.key === 'Enter') done(); });
 }
 
+/* 홈 화면에 추가하면 아이패드가 앱처럼 열고, **사파리가 저장한 기록을 안 지웁니다.**
+   iOS는 설치 버튼을 띄울 방법이 없어서 방법을 글로 알려주는 수밖에 없습니다.
+   아이에게는 이유를 말하지 않습니다 — 데이터가 날아갈 수 있다는 건 부모가 알 일입니다. */
+const HOME_HINT = 'gugudan-homehint';
+
+const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+const installed = () => navigator.standalone ||
+  (matchMedia && matchMedia('(display-mode: standalone)').matches);
+
+function homeHint() {
+  if (installed() || !isIOS() || localStorage.getItem(HOME_HINT)) return '';
+  return '<div class="hint2 mt2"><p>홈 화면에 넣어두면 앱처럼 바로 열려.<br>' +
+    '위쪽 <b>공유 버튼</b>을 누르고 <b>홈 화면에 추가</b>를 고르면 돼.</p>' +
+    '<button id="hinthide">알겠어</button></div>';
+}
+
 /* ============ 홈 ============ */
 
 function renderHome() {
@@ -308,7 +326,11 @@ function renderHome() {
     '</div>' +
     (WISHES.length ? '<button class="btn soft mt" data-go="wish">소원권</button>' : '') +
     (allowanceDay() ? '<button class="btn sun mt" data-go="money">오늘 용돈 바꾸는 날!</button>' : '') +
-    `<p class="sub center mt2">구구단 ${learned} / ${TARGETS.length}${extra} &nbsp;·&nbsp; 함께한 날 ${P.totals.daysPlayed}일</p>`;
+    `<p class="sub center mt2">구구단 ${learned} / ${TARGETS.length}${extra} &nbsp;·&nbsp; 함께한 날 ${P.totals.daysPlayed}일</p>` +
+    homeHint();
+
+  const hide = app.querySelector('#hinthide');
+  if (hide) hide.onclick = () => { localStorage.setItem(HOME_HINT, '1'); render(); };
 
   const play = () => { pickSubject = null; packList(INDEX).length > 1 ? go('pick') : startQuiz(); };
   app.querySelector('#play').onclick = play;

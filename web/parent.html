@@ -61,6 +61,8 @@
   .picks button.on { background:#2f3b46; color:#fff; border-color:#2f3b46; }
   .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
   .shut { opacity:.45; }
+  details summary { cursor:pointer; color:#4a5a4a; font-size:13px; margin:6px 0; }
+  .qtable th { text-align:left; font-weight:normal; color:#7c8c7c; font-size:12px; }
   .cut { border-top:1px dashed #c9d3c9; margin:6px 0 4px; padding-top:4px; font-size:12px; color:#7c8c7c; }
   .row input[type=number] { width:5.5em; }
   .row button { flex:1; }
@@ -154,6 +156,27 @@
     <input id="goal" type="number" min="5" max="60">
     <button id="saveSet">설정 저장</button>
     <p class="msg" id="msgSet"></p>
+  </section>
+
+  <section>
+    <h2>기록 내보내기 · 되돌리기</h2>
+    <p class="hint">아이가 몇 주 모은 별·아이템·도감은 <b>다시 만들 수 없습니다.</b>
+      가끔 내보내서 파일로 보관해두세요. 기기를 바꾸거나 데이터가 날아갔을 때 그 파일로 되돌립니다.</p>
+
+    <div class="row">
+      <button id="expBtn">지금 기록 내보내기</button>
+      <label>되돌릴 파일 고르기 <input id="impFile" type="file" accept="application/json,.json"></label>
+    </div>
+    <p class="msg" id="msgExp"></p>
+
+    <details id="expBox"><summary>글자로 복사하기 (파일이 안 될 때)</summary>
+      <textarea id="expText" readonly></textarea>
+    </details>
+
+    <p class="hint">되돌릴 때는 <b>붙여넣어도 됩니다.</b></p>
+    <textarea id="impText" placeholder='{"schemaVersion":2,"id":"…"}'></textarea>
+    <button id="impCheck">이 기록 확인하기</button>
+    <div id="impPreview"></div>
   </section>
 
   <section>
@@ -659,6 +682,101 @@ $('saveSet').onclick = async () => {
   });
   $('msgSet').textContent = res.saved ? '저장했습니다.' : res.error;
 };
+
+/* ============ 기록 내보내기 · 되돌리기 ============ */
+
+/* 한눈에 비교할 값들. 되돌리기는 덮어쓰기라 무엇이 바뀌는지 먼저 보여줘야 한다. */
+function summarize(p) {
+  if (!p || typeof p !== 'object') return null;
+  const mastered = p.totals?.mastered ?? 0;
+  return {
+    이름: p.displayName || p.id || '?',
+    만든날: p.createdAt || '?',
+    함께한날: (p.totals?.daysPlayed ?? 0) + '일',
+    풀: p.wallet?.grass ?? 0,
+    별: p.wallet?.star ?? 0,
+    '완전히 외운 것': mastered,
+    스티커: (p.collection?.stickers || []).length,
+    아이템: (p.inventory?.items || []).length,
+    친구: (p.characters?.unlocked || []).length,
+  };
+}
+
+/* 프로필처럼 보이는지 본다. 엉뚱한 파일로 아이 기록을 덮어쓰면 되돌릴 수 없다. */
+function readBackup(text) {
+  let data;
+  try { data = JSON.parse(text); }
+  catch { return { error: '파일을 읽을 수 없습니다. 내보내기로 만든 파일이 맞는지 확인해주세요.' }; }
+  if (!data || typeof data !== 'object') return { error: '기록 파일이 아닙니다.' };
+  for (const key of ['wallet', 'facts', 'totals'])
+    if (!(key in data)) return { error: `기록 파일이 아닙니다. (${key}가 없습니다)` };
+  return { data };
+}
+
+const stamp = () => new Date().toLocaleDateString('sv-SE');
+
+function download(name, text) {
+  const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+  const a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+$('expBtn').onclick = async () => {
+  if (!PROFILE) return $('msgExp').textContent = '먼저 위에서 아이를 골라주세요.';
+  // 방금 상태를 다시 받는다. 아이가 지금 놀고 있을 수 있다.
+  const fresh = await api(`/api/profile/${encodeURIComponent(PROFILE.id)}`);
+  const text = JSON.stringify(fresh, null, 2);
+  $('expText').value = text;
+  download(`양이랑구구단-${fresh.id}-${stamp()}.json`, text);
+  $('msgExp').textContent = `내보냈습니다. 안전한 곳에 두세요 — 별 ${fresh.wallet.star}, 스티커 ${(fresh.collection?.stickers || []).length}장.`;
+};
+
+$('impFile').onchange = async () => {
+  const f = $('impFile').files[0];
+  if (!f) return;
+  $('impText').value = await f.text();
+  showImport();
+};
+$('impCheck').onclick = showImport;
+
+function showImport() {
+  const { data, error } = readBackup($('impText').value);
+  if (error) return $('impPreview').innerHTML = `<p class="warn">${esc(error)}</p>`;
+  if (!PROFILE) return $('impPreview').innerHTML = '<p class="warn">먼저 위에서 아이를 골라주세요.</p>';
+
+  const now = summarize(PROFILE), next = summarize(data);
+  const other = data.id && data.id !== PROFILE.id
+    ? `<p class="warn">이 기록은 <b>${esc(data.displayName || data.id)}</b>의 것입니다. ` +
+      `지금 고른 아이는 <b>${esc(PROFILE.displayName)}</b>입니다. 정말 되돌릴까요?</p>` : '';
+
+  $('impPreview').innerHTML = other +
+    '<table class="qtable"><tr><th></th><th>지금</th><th>되돌리면</th></tr>' +
+    Object.keys(now).map(k => {
+      const a = now[k], b = next[k];
+      const down = typeof a === 'number' && typeof b === 'number' && b < a;
+      return `<tr><td class="q">${esc(k)}</td><td>${esc(a)}</td>` +
+             `<td${down ? ' class="warn"' : ''}>${esc(b)}</td></tr>`;
+    }).join('') + '</table>' +
+    '<p class="hint"><b>지금 기록은 덮어써집니다.</b> 되돌리기 전에 위의 “지금 기록 내보내기”를 한 번 눌러두세요.</p>' +
+    '<button id="impGo">이 기록으로 되돌리기</button>';
+
+  $('impGo').onclick = async () => {
+    if (!confirm(`${PROFILE.displayName}의 지금 기록을 덮어씁니다. 계속할까요?`)) return;
+    $('impGo').disabled = true;
+    try {
+      const fixed = { ...data, id: PROFILE.id };   // 파일 이름과 id가 어긋나면 안 된다
+      await fetch(`/api/profile/${encodeURIComponent(PROFILE.id)}`,
+                  { method: 'PUT', body: JSON.stringify(fixed) });
+      $('impPreview').innerHTML = '<p class="msg">되돌렸습니다. 아이패드에서 새로고침하면 반영됩니다.</p>';
+      await showStat();
+    } catch {
+      $('impGo').disabled = false;
+      $('impPreview').innerHTML += '<p class="warn">되돌리지 못했습니다. 다시 눌러주세요.</p>';
+    }
+  };
+}
 
 /* v1(단일 HTML + localStorage) → v2 프로필 변환 */
 function fromV1(old, p) {

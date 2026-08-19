@@ -39,7 +39,7 @@ def decode_path(raw):
 
 MIME = {
     ".html": "text/html", ".js": "text/javascript", ".css": "text/css",
-    ".json": "application/json", ".svg": "image/svg+xml",
+    ".json": "application/json", ".webmanifest": "application/manifest+json", ".svg": "image/svg+xml",
     ".png": "image/png", ".ico": "image/x-icon",
 }
 
@@ -246,9 +246,13 @@ class Handler(BaseHTTPRequestHandler):
         length = min(int(self.headers.get("Content-Length") or 0), MAX_BODY)
         return json.loads(self.rfile.read(length) or b"{}")
 
+    TEXTY = ("text/", "application/json", "application/manifest+json", "image/svg+xml")
+
     def send_bytes(self, code, ctype, body):
         self.send_response(code)
-        self.send_header("Content-Type", f"{ctype}; charset=utf-8")
+        # 아이콘 같은 이진 파일에 charset을 붙이면 안 된다
+        texty = any(ctype.startswith(k) for k in self.TEXTY)
+        self.send_header("Content-Type", f"{ctype}; charset=utf-8" if texty else ctype)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
