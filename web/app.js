@@ -3,6 +3,8 @@ import { TARGETS, factKey, buildIndex, packList, pruneLogs, seedFacts, makeQuest
 
 const BASE_REWARD = 3;    // 풀어보기만 해도
 const BONUS_REWARD = 3;   // 맞추면 조금 더
+const BOARD_SIZE = 12;    // 도감 한 판
+const BOARD_STAR = 3;     // 한 판을 다 채우면
 const PENDING = 'gugudan-pending';
 const LAST_ID = 'gugudan-last-profile';
 
@@ -73,8 +75,10 @@ async function enter(id) {
   INDEX = buildIndex(PACKS, P.disabled);   // 부모가 끈 문제는 여기서 빠진다
   seedFacts(INDEX, P.facts);
   rollDay();
+  const owed = catchUpBoards();   // 도감 보상은 5B에서 생겼다 — 그 전에 모은 것도 준다
   await save();
   go('home');
+  if (owed) toast(`도감을 다 채운 판이 있었어! 별 ${owed}개`);
 }
 
 async function start() {
@@ -220,6 +224,7 @@ function render() {
   else if (view === 'quiz') renderQuiz();
   else if (view === 'shop') renderShop();
   else if (view === 'closet') renderCloset();
+  else if (view === 'book') renderCollection();
   else if (view === 'done') renderDone();
   else renderHome();
   bind();
@@ -272,7 +277,10 @@ function renderHome() {
     '<div class="btnrow">' +
       '<button class="btn soft" data-go="shop">가게</button>' +
       '<button class="btn soft" data-go="closet">옷장</button>' +
+    '</div>' +
+    '<div class="btnrow">' +
       '<button class="btn soft" data-go="friends">친구들</button>' +
+      '<button class="btn soft" data-go="book">도감</button>' +
     '</div>' +
     `<p class="sub center mt2">구구단 ${learned} / ${TARGETS.length}${extra} &nbsp;·&nbsp; 함께한 날 ${P.totals.daysPlayed}일</p>`;
 
@@ -364,7 +372,10 @@ function answer(picked) {
     P.daily.star = (P.daily.star || 0) + 1;
     P.totals.mastered++;
     P.collection.stickers.push(q.key);
-    setTimeout(() => toast(say('마스터') || '이건 이제 완전히 외웠어!'), 400);
+    const board = catchUpBoards();
+    // 토스트는 하나만 띄운다 — 판을 채운 날은 그게 더 큰 소식이다
+    setTimeout(() => toast(board ? `도감 한 판을 다 채웠어! 별 ${board}개`
+                                 : (say('마스터') || '이건 이제 완전히 외웠어!')), 400);
   }
 
   saveSoon();
@@ -378,6 +389,82 @@ function advance() {
   nextQ();
   renderQuiz();
   bind();
+}
+
+/* ============ 도감 ============ */
+
+/* 판 보상은 더하기만 한다. 이미 받은 것을 다시 계산해 줄이는 코드를 만들지 마세요 —
+   상점 단계와 별이 같이 줄어들고, 어제까지 살 수 있던 물건이 사라집니다 (원칙 2.1). */
+function catchUpBoards() {
+  const done = Math.floor(P.collection.stickers.length / BOARD_SIZE);
+  const due = done - (P.collection.boardsCompleted || 0);
+  if (due <= 0) return 0;
+
+  P.collection.boardsCompleted = done;
+  const star = due * BOARD_STAR;
+  P.wallet.star += star;
+  P.daily.star = (P.daily.star || 0) + star;
+  return star;
+}
+
+/* 부모가 문제를 꺼도 스티커는 남는다(원칙 2.9). 그래서 색인에 없는 키도 읽을 수 있어야 한다. */
+function stickerLabel(key) {
+  const gugu = /^gugudan:(\d+)x(\d+)$/.exec(key);
+  if (gugu) return `${gugu[1]}×${gugu[2]}`;
+
+  const e = INDEX[key];
+  const text = (e ? e.prompt : key.slice(key.indexOf(':') + 1)).replace(/\s+/g, ' ').trim();
+  if (text.length <= 8) return text;
+  return (e && e.answer && e.answer.length <= 8) ? e.answer : text.slice(0, 7) + '…';
+}
+
+/* 스티커 색과 기울기는 문제마다 고정 — 다시 열어도 같은 자리에 같은 스티커가 있어야 한다 */
+function hashOf(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return h;
+}
+
+function boardHTML(keys, n, complete) {
+  let cells = '';
+  for (let i = 0; i < BOARD_SIZE; i++) {
+    const key = keys[i];
+    if (!key) { cells += '<div class="sticker empty"></div>'; continue; }
+    const label = stickerLabel(key), h = hashOf(key);
+    const size = label.length > 5 ? ' tiny' : label.length > 3 ? ' small' : '';
+    cells += `<div class="sticker c${h % 6}${size}" style="--tilt:${h % 7 - 3}deg">${esc(label)}</div>`;
+  }
+  return `<div class="board ${complete ? 'done' : ''} mt">` +
+    `<div class="bhead"><span>${n}번째 판</span>` +
+    (complete ? `<span class="got">${STAR_ICON} ${BOARD_STAR}</span>`
+              : `<span>${BOARD_SIZE - keys.length}칸 남았어</span>`) +
+    `</div><div class="cells">${cells}</div></div>`;
+}
+
+function renderCollection() {
+  const list = P.collection.stickers || [];
+  const done = Math.floor(list.length / BOARD_SIZE);
+  const here = list.length % BOARD_SIZE;
+
+  let html = topbar(true) +
+    '<div class="card stage">' + me('happy', 'pop') +
+      '<h1 class="sheepname">도감</h1>' +
+      `<p class="sub">${list.length ? '완전히 외운 것마다 스티커가 한 장씩 붙어'
+                                    : '문제를 완전히 외우면 스티커가 한 장 붙어'}</p>` +
+      (list.length ? '<div class="prog">' +
+        `<div class="lbl"><span>이번 판</span><span>${here} / ${BOARD_SIZE}</span></div>` +
+        `<div class="track"><div class="fill" style="width:${here / BOARD_SIZE * 100}%"></div></div>` +
+      '</div>' : '') +
+    '</div>';
+
+  // 채우는 중인 판이 맨 위 — 매번 아래로 스크롤하지 않게
+  html += boardHTML(list.slice(done * BOARD_SIZE), done + 1, false);
+  for (let b = done - 1; b >= 0; b--)
+    html += boardHTML(list.slice(b * BOARD_SIZE, (b + 1) * BOARD_SIZE), b + 1, true);
+
+  app.innerHTML = html +
+    `<p class="sub center mt2">한 판 ${BOARD_SIZE}칸을 채우면 별 ${BOARD_STAR}개를 받아` +
+    (done ? ` &nbsp;·&nbsp; 다 채운 판 ${done}개` : '') + '</p>';
 }
 
 /* ============ 오늘 끝 ============ */

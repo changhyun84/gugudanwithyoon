@@ -152,3 +152,28 @@ input:focus,button:focus-visible{outline:3px solid var(--sky);outline-offset:2px
 /* --- 아직 못 만난 친구 --- */
 .herdone.soon svg{filter:grayscale(1) brightness(1.3);opacity:.5}
 .soonline{margin:2px 0 0;font-size:14px}
+
+/* --- 도감 --- */
+.board{background:var(--card);border:2px solid var(--line);border-radius:22px;padding:14px;
+  box-shadow:var(--shadow)}
+.board.done{background:#F6FBF3;border-color:#C6DFB6}
+.bhead{display:flex;justify-content:space-between;align-items:center;gap:8px;
+  font-size:14px;color:var(--ink-soft);margin-bottom:10px}
+.bhead span:first-child{font-family:'Jua',sans-serif;font-size:17px;color:var(--ink)}
+.bhead .got{display:flex;align-items:center;gap:4px;font-family:'Jua',sans-serif;
+  font-size:16px;color:var(--sun)}
+.bhead .got svg{width:18px;height:18px}
+.cells{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.sticker{aspect-ratio:1;border-radius:16px;display:grid;place-items:center;text-align:center;
+  font-family:'Jua',sans-serif;font-size:17px;line-height:1.15;padding:4px;
+  word-break:keep-all;overflow:hidden;
+  transform:rotate(var(--tilt,0deg));box-shadow:0 2px 0 rgba(51,69,58,.10)}
+.sticker.small{font-size:14px}
+.sticker.tiny{font-size:11.5px;line-height:1.25}
+.sticker.empty{background:transparent;border:2px dashed var(--line);box-shadow:none;transform:none}
+.sticker.c0{background:#FDE7C9;color:#8A5B1E}
+.sticker.c1{background:#DCEEDA;color:#3F6B33}
+.sticker.c2{background:#DCE9F7;color:#33587F}
+.sticker.c3{background:#F7DDE4;color:#8B4460}
+.sticker.c4{background:#E7E1F5;color:#54417F}
+.sticker.c5{background:#FBF0C8;color:#7A6414}
