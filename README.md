@@ -27,7 +27,7 @@
 ## 지금 상태
 
 **완료** — 서버 뼈대 / v1 이식 / 문제 팩 / 캐릭터 5종 + 응원 메시지 / 계측·부모 현황·문제 켜고 끄기
-**다음** — 5B 보상 확장 (도감, 상점 단계 개방, 배경, 소원권·용돈)
+**다음** — 5B 보상 확장 (도감·상점 완료 / 배경 10종 + 소원권, 용돈)
 **그 뒤** — 6A 단답형 → 6B 사진으로 단어 등록 → 6C 서술형 → 6D 서술형 AI 반응 → 7 모드 확장 → 8 마감
 
 > 6A~6D는 아이가 요청한 확장(단답형·서술형·영어 단어)입니다.
@@ -48,7 +48,7 @@ web/          app.js · engine.js · characters.js · styles.css · index.html �
 content/      problems/*.csv|md · messages.csv
 data/         자동 생성, git 제외
 sim/          60days.mjs  (보상 균형 시뮬레이션 — 보상을 건드리기 전에 반드시)
-test/         t_book.mjs  (도감. jsdom 없이 돎)  · t_engine.mjs·t_app.mjs는 아직 없음
+test/         t_book.mjs · t_shop.mjs  (jsdom 없이 돎) · t_engine.mjs·t_app.mjs는 아직 없음
 ```
 
 `ai.py`는 6B에서 새로 생깁니다. **`server.py`에 합치지 마세요** — 외부 호출은 실패하는 코드라 격리합니다.
@@ -85,7 +85,8 @@ test/         t_book.mjs  (도감. jsdom 없이 돎)  · t_engine.mjs·t_app.mjs
 
 ```
 node test/t_book.mjs       # 30개 — 도감. 판 보상이 줄어드는 경로가 없는지
-node sim/60days.mjs        # 보상 균형
+node test/t_shop.mjs       # 31개 — 상점 단계·전용 아이템. 선반이 닫히는 경로가 없는지
+node sim/60days.mjs        # 보상 균형. characters.js에서 가격표를 그대로 읽는다
 ```
 
 5A 때 쓰던 `t_engine.mjs`·`t_app.mjs`는 저장소에 없습니다. 없는 채로 진행하기로 했으니, 손으로 확인할 것을 각 단계마다 정해두고 시작하세요. 특히 6A(채점 규칙)는 눈으로 다 못 봅니다.
@@ -108,6 +109,6 @@ cp web/characters.js /tmp/ch.mjs && node --input-type=module -e "import('/tmp/ch
 
 ## 첫 작업 지시 예시
 
-> `기획서.md`와 `구현-현황.md` 13장을 읽고, 5B의 첫 항목인 도감 화면부터 만들어줘.
-> `collection.stickers`에 이미 값이 쌓이고 있으니 보여주는 화면과 판 완성 보상(별 3)을 붙이면 돼.
-> 넣기 전후로 `node sim/60days.mjs`를 돌려서 별 소비처가 마르는 날이 당겨지지 않는지 봐줘.
+> `기획서.md`와 `구현-현황.md` 13장을 읽고, 5B의 다음 항목인 배경과 소원권을 만들어줘.
+> 배경 10종(각 별 5~12)과 소원권은 **같이** 넣어야 해 — 배경만 넣으면 두 달 뒤 별이 죽어(13.2).
+> 넣기 전후로 `node sim/60days.mjs`를 돌려서 별 잔고가 0에 닿는 날이 90일 이후인지 봐줘.

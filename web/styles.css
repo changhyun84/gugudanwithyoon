@@ -177,3 +177,6 @@ input:focus,button:focus-visible{outline:3px solid var(--sky);outline-offset:2px
 .sticker.c3{background:#F7DDE4;color:#8B4460}
 .sticker.c4{background:#E7E1F5;color:#54417F}
 .sticker.c5{background:#FBF0C8;color:#7A6414}
+
+/* --- 전용 아이템 표시 --- */
+.item .only{font-size:13px;color:var(--sun);font-family:'Jua',sans-serif;line-height:1.2}

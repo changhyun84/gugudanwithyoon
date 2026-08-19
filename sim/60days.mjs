@@ -33,15 +33,14 @@ const GOAL = 20;
 const P_RIGHT = [0.45, 0.62, 0.78, 0.88, 0.95];
 const P_HINT  = [0.45, 0.30, 0.15, 0.06, 0.02];
 
-const FRIENDS = [8, 15, 25, 40];              // 캐릭터 해금 (누적 88) — 기획서 4.1
-const BACKGROUNDS = [5, 6, 8, 8, 10, 12];     // 배경 (누적 49) — 기획서 8.5
-const SHOP = [                                // 기획서 8.3
-  { tier: 1, total: 530,  need: 0  },
-  { tier: 2, total: 1900, need: 10 },
-  { tier: 3, total: 1400, need: 25 },   // 전용 — 해금한 친구 수만큼만 살 수 있다
-  { tier: 4, total: 2100, need: 50 },
-  { tier: 5, total: 3000, need: 65 },
-];
+/* 상점 재고는 characters.js에서 그대로 읽는다 — 가격표를 두 곳에 두면 반드시 어긋난다 */
+writeFileSync(join(tmp, 'characters.mjs'), readFileSync(new URL('../web/characters.js', import.meta.url)));
+const { ALL_ITEMS, CHARACTERS, TIER_NEED } = await import('file://' + join(tmp, 'characters.mjs'));
+
+/* 캐릭터는 만날 때마다 **전액**을 낸다 (app.js pickChar: wallet.star -= c.star).
+   차액으로 계산하면 별 소비가 절반으로 줄어 시뮬레이션이 낙관적으로 나온다. */
+const FRIENDS = CHARACTERS.filter(c => c.star);   // 8+15+25+40 = 88
+const BACKGROUNDS = [5, 5, 6, 7, 8, 8, 10, 10, 12, 12];   // 배경 10종, 각 5~12 — 기획서 8.5 (누적 83)
 
 function simulate({ story = false, days = DAYS } = {}) {
   const index = buildIndex(PACKS);
@@ -54,6 +53,7 @@ function simulate({ story = false, days = DAYS } = {}) {
   let grass = 0, star = 0, mastered = 0, stickers = 0, story12 = 0;
   let starSpent = 0, grassSpent = 0, friends = 0, bg = 0, dryDay = null;
   const recent = [], packDone = new Set(), bought = new Set(), rows = [];
+  const met = new Set(['sheep']);
 
   for (let d = 0; d < days; d++) {
     const today = new Date(Date.UTC(2026, 8, 1) + d * 86400000).toISOString().slice(0, 10);
@@ -77,30 +77,35 @@ function simulate({ story = false, days = DAYS } = {}) {
     for (const [pid, ks] of Object.entries(keysOf))                // 팩 전체 마스터
       if (!packDone.has(pid) && ks.every(k => facts[k].m === 4)) { packDone.add(pid); star += 5; }
 
-    while (friends < 4 && star - starSpent >= FRIENDS[friends] - (friends ? FRIENDS[friends - 1] : 0))
-      { starSpent += FRIENDS[friends] - (friends ? FRIENDS[friends - 1] : 0); friends++; }
+    while (friends < FRIENDS.length && star - starSpent >= FRIENDS[friends].star)
+      { starSpent += FRIENDS[friends].star; met.add(FRIENDS[friends].id); friends++; }
     while (bg < BACKGROUNDS.length && star - starSpent >= BACKGROUNDS[bg])
       { starSpent += BACKGROUNDS[bg]; bg++; }
-    if (dryDay === null && friends === 4 && bg === BACKGROUNDS.length) dryDay = d + 1;
+    if (dryDay === null && friends === FRIENDS.length && bg === BACKGROUNDS.length) dryDay = d + 1;
 
-    for (const s of SHOP) {
-      if (mastered < s.need || bought.has(s.tier)) continue;
-      const cost = Math.round(s.total * (s.tier >= 3 ? (1 + friends) / 5 : 1));
-      if (grass - grassSpent >= cost) { grassSpent += cost; bought.add(s.tier); }
+    // 열린 선반에서 살 수 있는 것을 싼 것부터. 전용은 그 친구를 만났을 때만
+    const tier = TIER_NEED.reduce((t, need, i) => mastered >= need ? i + 1 : t, 1);
+    for (const it of ALL_ITEMS) {
+      if (bought.has(it.id) || (it.tier || 1) > tier) continue;
+      if (it.only && !met.has(it.only)) continue;   // 아직 못 만난 친구의 전용은 못 산다
+      if (grass - grassSpent < it.price) continue;
+      grassSpent += it.price; bought.add(it.id);
     }
 
     if ([13, 29, 44, 59, 89].includes(d) && d < days)
       rows.push({ 일: d + 1, 마스터: mastered, 별번: star, 별잔고: star - starSpent,
                   친구: 1 + friends, 배경: 1 + bg,
-                  풀번: grass, 풀잔고: grass - grassSpent, 산단계: [...bought].join('') || '-' });
+                  풀번: grass, 풀잔고: grass - grassSpent, 산것: bought.size + '/' + ALL_ITEMS.length });
   }
   return { rows, dryDay, mastered };
 }
 
 const total = Object.values(buildIndex(PACKS)).filter(e => e.rewardable).length;
 console.log(`별을 주는 문제 ${total}개 (쉬운 구구단 24개는 제외 — 구현-현황 2.1)`);
-for (const s of SHOP)
-  if (s.need > total) console.log(`  ⚠ 상점 ${s.tier}단계 조건 ${s.need}문제 마스터는 **도달 불가**`);
+console.log(`아이템 ${ALL_ITEMS.length}종 · 총액 ${ALL_ITEMS.reduce((s, i) => s + i.price, 0)}풀`);
+TIER_NEED.forEach((need, i) => {
+  if (need > total) console.log(`  ⚠ 상점 ${i + 1}단계 조건 ${need}문제 마스터는 **도달 불가**`);
+});
 
 for (const story of [false, true]) {
   const r = simulate({ story, days: Math.max(DAYS, 90) });

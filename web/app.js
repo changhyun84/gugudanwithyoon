@@ -1,4 +1,4 @@
-import { CHARACTERS, GRASS_ICON, HATS, SCARVES, STAR_ICON, charById, charSVG, isHat, itemById } from './characters.js';
+import { ALL_ITEMS, CHARACTERS, GRASS_ICON, ITEMS, STAR_ICON, charById, charSVG, itemById, slotOf, tierOf } from './characters.js';
 import { TARGETS, factKey, buildIndex, packList, pruneLogs, seedFacts, makeQuestion, applyResult } from './engine.js';
 
 const BASE_REWARD = 3;    // 풀어보기만 해도
@@ -72,10 +72,13 @@ async function enter(id) {
   P = await api(`/api/profile/${encodeURIComponent(id)}`);
   localStorage.setItem(LAST_ID, id);
   P.disabled ||= { problems: [], packs: [] };
+  P.settings ||= { goal: 20, reduceMotion: false };          // v1에서 옮겨온 프로필 대비
+  P.collection ||= { stickers: [], boardsCompleted: 0 };
   INDEX = buildIndex(PACKS, P.disabled);   // 부모가 끈 문제는 여기서 빠진다
   seedFacts(INDEX, P.facts);
   rollDay();
   const owed = catchUpBoards();   // 도감 보상은 5B에서 생겼다 — 그 전에 모은 것도 준다
+  catchUpTier();
   await save();
   go('home');
   if (owed) toast(`도감을 다 채운 판이 있었어! 별 ${owed}개`);
@@ -272,6 +275,7 @@ function renderHome() {
       '</div>' +
     '</div>' +
     `<button class="btn go mt2" id="play">${finished ? '조금 더 해볼래' : '문제 풀러 가기'}</button>` +
+    (P.settings.newTier ? '<button class="btn sun mt" data-go="shop">가게에 새로운 게 들어왔어!</button>' : '') +
     (nextFriend() && P.wallet.star >= nextFriend().star
       ? `<button class="btn sun mt" data-go="friends">${nextFriend().nm}가 기다리고 있어</button>` : '') +
     '<div class="btnrow">' +
@@ -373,9 +377,11 @@ function answer(picked) {
     P.totals.mastered++;
     P.collection.stickers.push(q.key);
     const board = catchUpBoards();
-    // 토스트는 하나만 띄운다 — 판을 채운 날은 그게 더 큰 소식이다
-    setTimeout(() => toast(board ? `도감 한 판을 다 채웠어! 별 ${board}개`
-                                 : (say('마스터') || '이건 이제 완전히 외웠어!')), 400);
+    const tier = catchUpTier();
+    // 토스트는 하나만 띄운다 — 더 큰 소식이 이긴다
+    setTimeout(() => toast(tier ? '가게에 새로운 게 들어왔어!'
+                                : board ? `도감 한 판을 다 채웠어! 별 ${board}개`
+                                : (say('마스터') || '이건 이제 완전히 외웠어!')), 400);
   }
 
   saveSoon();
@@ -405,6 +411,17 @@ function catchUpBoards() {
   P.wallet.star += star;
   P.daily.star = (P.daily.star || 0) + star;
   return star;
+}
+
+/* 상점 단계도 더하기만 한다. facts에서 다시 세는 코드를 만들면
+   부모가 문제를 끈 날 선반이 닫히고, 어제까지 살 수 있던 물건이 사라진다 (원칙 2.1 / 구현-현황 2.9). */
+function catchUpTier() {
+  const before = P.shopTier || 1;
+  const now = Math.max(before, tierOf(P.totals.mastered));
+  if (now === before) return 0;
+  P.shopTier = now;
+  P.settings.newTier = now;   // 가게에 들어가면 지운다
+  return now;
 }
 
 /* 부모가 문제를 꺼도 스티커는 남는다(원칙 2.9). 그래서 색인에 없는 키도 읽을 수 있어야 한다. */
@@ -489,26 +506,58 @@ function renderDone() {
 /* ============ 가게 ============ */
 
 function renderShop() {
-  const list = shopTab === 'hat' ? HATS : SCARVES;
+  P.settings.newTier = 0;   // 들어왔으면 알림은 지운다
+
+  const tabs = Object.entries(ITEMS)
+    .map(([slot, list]) => [slot, list.filter(buyable)])
+    .filter(([, list]) => list.length);
+  if (!tabs.some(([slot]) => slot === shopTab)) shopTab = tabs[0][0];
+
+  const label = { hat: '모자', neck: '목도리', prop: '소품' };
+  const list = tabs.find(([slot]) => slot === shopTab)[1];
+
   let html = topbar(true) + '<h2 class="center" style="margin:2px 0 0">가게</h2>' +
     '<p class="sub center" style="margin:2px 0 0">문제를 풀면 풀이 쌓여</p>' +
     '<div class="tabs">' +
-      `<button class="tab ${shopTab === 'hat' ? 'on' : ''}" data-tab="hat">모자</button>` +
-      `<button class="tab ${shopTab === 'scarf' ? 'on' : ''}" data-tab="scarf">목도리</button>` +
+      tabs.map(([slot]) => `<button class="tab ${slot === shopTab ? 'on' : ''}" data-tab="${slot}">${label[slot]}</button>`).join('') +
     '</div><div class="grid">';
 
   list.forEach(it => {
     const own = P.inventory.items.includes(it.id);
     const can = P.wallet.grass >= it.price;
-    const mini = charSVG(active(), shopTab === 'hat' ? { ...worn(), hat: it.id } : { ...worn(), neck: it.id }, 'happy');
-    html += `<div class="item ${own ? '' : can ? '' : 'locked'}" data-buy="${it.id}">${mini}<div class="nm">${it.nm}</div>` +
-      (own ? '<div class="st">가지고 있어</div>' : `<div class="pr ${can ? '' : 'cant'}">${GRASS_ICON} ${it.price}</div>`) +
+    // 전용은 그 친구에게 씌워서 보여준다 — 활동 캐릭터에 씌우면 못 입는 걸 입은 것처럼 보인다
+    const on = it.only || active();
+    const mini = charSVG(on, { ...worn(on), [slotOf(it.id)]: it.id }, 'happy');
+    html += `<div class="item ${own || can ? '' : 'locked'}" data-buy="${it.id}">${mini}` +
+      `<div class="nm">${esc(it.nm)}</div>` +
+      (it.only ? `<div class="only">${esc(charName(it.only))}만</div>` : '') +
+      (own ? '<div class="st">가지고 있어</div>'
+           : `<div class="pr ${can ? '' : 'cant'}">${GRASS_ICON} ${it.price}</div>`) +
     '</div>';
   });
-  app.innerHTML = html + '</div>';
+  app.innerHTML = html + '</div>' + nextShelf();
 
   app.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { shopTab = b.dataset.tab; renderShop(); bind(); });
   app.querySelectorAll('[data-buy]').forEach(b => b.onclick = () => buy(b.dataset.buy));
+}
+
+/* 살 수 있는 것 — 선반이 열렸고, 전용이면 그 친구를 이미 만났을 때.
+   아직 못 만난 친구의 물건은 보여주지 않는다. 다음 목표는 목장의 회색 실루엣이 이미 하고 있고,
+   두 곳에서 같은 일을 하면 가게가 잠긴 물건 창고가 된다 (기획서 8.7). */
+const buyable = it => (it.tier || 1) <= (P.shopTier || 1) &&
+                      (!it.only || P.characters.unlocked.includes(it.only));
+
+/* 이 캐릭터가 입을 수 있는 것 */
+const wearable = (it, id) => !it.only || it.only === id;
+
+/* 다음 선반이 언제 열리는지 — 목표가 보이면 다음에 할 일이 생긴다 (기획서 8.3) */
+function nextShelf() {
+  const open = P.shopTier || 1;
+  if (open >= 5) return '';
+  const left = [10, 25, 50, 65][open - 1] - P.totals.mastered;
+  return `<p class="sub center mt2">${left > 0
+    ? `${left}개를 더 완전히 외우면 새로운 게 들어와`
+    : '새로운 게 곧 들어와'}</p>`;
 }
 
 function buy(id) {
@@ -518,9 +567,11 @@ function buy(id) {
 
   P.wallet.grass -= it.price;
   P.inventory.items.push(id);
-  worn()[isHat(id) ? 'hat' : 'neck'] = id;
+  worn(it.only || active())[slotOf(id)] = id;   // 전용은 주인에게 바로 입혀둔다
   save();
-  toast(say('새아이템') || `${it.nm} 샀어!`);
+  toast(it.only && it.only !== active()
+    ? `${charName(it.only)}한테 입혀뒀어!`
+    : (say('새아이템') || `${it.nm} 샀어!`));
   renderShop();
   bind();
 }
@@ -546,8 +597,7 @@ function renderCloset() {
 
   app.querySelector('#rename').onclick = renameChar;
   app.querySelectorAll('[data-wear]').forEach(b => b.onclick = () => {
-    const id = b.dataset.wear;
-    const slot = isHat(id) ? 'hat' : 'neck';
+    const id = b.dataset.wear, slot = slotOf(id);
     worn()[slot] = worn()[slot] === id ? null : id;
     save();
     render();
@@ -555,19 +605,23 @@ function renderCloset() {
 }
 
 function wearGrid() {
-  const owned = P.inventory.items;
-  if (!owned.length) {
-    return '<p class="sub center mt2">아직 가진 게 없어. 가게에서 사보자!</p>' +
+  // 다른 친구 전용은 여기 안 나온다. 사라진 게 아니라 그 친구한테 가면 있다.
+  const mine = ALL_ITEMS.filter(it => P.inventory.items.includes(it.id) && wearable(it, active()));
+  if (!mine.length) {
+    const has = P.inventory.items.length;
+    return `<p class="sub center mt2">${has
+      ? `${esc(charName())}가 입을 수 있는 건 아직 없어. 다른 친구한테 가보면 있을지도!`
+      : '아직 가진 게 없어. 가게에서 사보자!'}</p>` +
       '<button class="btn sun mt" data-go="shop">가게로 가기</button>';
   }
+
   let html = '<div class="grid">';
-  HATS.concat(SCARVES).forEach(it => {
-    if (!owned.includes(it.id)) return;
-    const hat = isHat(it.id);
-    const on = hat ? worn().hat === it.id : worn().neck === it.id;
-    const mini = charSVG(active(), hat ? { ...worn(), hat: it.id } : { ...worn(), neck: it.id }, 'happy');
+  mine.forEach(it => {
+    const slot = slotOf(it.id);
+    const on = worn()[slot] === it.id;
+    const mini = charSVG(active(), { ...worn(), [slot]: it.id }, 'happy');
     html += `<div class="item ${on ? 'worn' : ''}" data-wear="${it.id}">${mini}` +
-      `<div class="nm">${it.nm}</div><div class="st">${on ? '입고 있어' : '입히기'}</div></div>`;
+      `<div class="nm">${esc(it.nm)}</div><div class="st">${on ? '입고 있어' : '입히기'}</div></div>`;
   });
   return html + '</div>';
 }
