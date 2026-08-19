@@ -15,26 +15,46 @@ export const EASY = [];
 
 export const factKey = (a, b) => `${GUGUDAN}:${Math.min(a, b)}x${Math.max(a, b)}`;
 
+/* 쉬운 구구단은 마스터로 세지 않는다 — 별·스티커·통계 기준을 한 곳에서 결정한다.
+   parent.html의 v1 이관도 이 함수를 쓴다. */
+const EASY_KEYS = new Set(EASY.map(([a, b]) => factKey(a, b)));
+export const isRewardable = key => !EASY_KEYS.has(key);
+
 /* 문제 하나의 정의:
    packId, order, gated(앞 3개 규칙 적용), rewardable(마스터 시 별), start(처음 마스터리)
    mul이 있으면 계산으로 만들고, 없으면 파일에서 온 고정 문제다. */
-export function buildIndex(packs = []) {
+export function buildIndex(packs = [], disabled = null) {
+  const offQ = new Set(disabled?.problems || []);
+  const offP = new Set(disabled?.packs || []);
   const index = {};
 
-  TARGETS.forEach(([a, b], i) => {
-    index[factKey(a, b)] = { packId: GUGUDAN, packName: '구구단', order: i,
-                             mul: [a, b], gated: true, rewardable: true, start: 0 };
-  });
-  EASY.forEach(([a, b], i) => {
-    index[factKey(a, b)] = { packId: GUGUDAN, packName: '구구단', order: 100 + i,
-                             mul: [a, b], gated: false, rewardable: false, start: 2 };
+  if (!offP.has(GUGUDAN)) {
+    TARGETS.forEach(([a, b], i) => {
+      const key = factKey(a, b);
+      if (offQ.has(key)) return;
+      index[key] = { packId: GUGUDAN, packName: '구구단', order: i,
+                     mul: [a, b], gated: true, rewardable: true, start: 0 };
+    });
+    EASY.forEach(([a, b], i) => {
+      const key = factKey(a, b);
+      if (offQ.has(key)) return;
+      index[key] = { packId: GUGUDAN, packName: '구구단', order: 100 + i,
+                     mul: [a, b], gated: false, rewardable: false, start: 2 };
+    });
+  }
+
+  packs.forEach(pack => {
+    if (offP.has(pack.id)) return;
+    pack.problems.forEach(q => {
+      if (offQ.has(q.key)) return;
+      index[q.key] = { packId: pack.id, packName: pack.name, order: q.order,
+                       prompt: q.prompt, answer: q.answer, choices: q.choices, hint: q.hint,
+                       gated: true, rewardable: true, start: 0 };
+    });
   });
 
-  packs.forEach(pack => pack.problems.forEach(q => {
-    index[q.key] = { packId: pack.id, packName: pack.name, order: q.order,
-                     prompt: q.prompt, answer: q.answer, choices: q.choices, hint: q.hint,
-                     gated: true, rewardable: true, start: 0 };
-  }));
+  // 부모가 실수로 전부 꺼도 아이 화면이 빈 채로 멈추면 안 된다 — 제외를 무시하고 다시 짓는다.
+  if (!Object.keys(index).length && (offQ.size || offP.size)) return buildIndex(packs);
 
   return index;
 }
@@ -175,11 +195,72 @@ export function makeQuestion(index, facts, recent, today, packId = null) {
            equation: !e.prompt.trim().endsWith('?'), state: 'ask', hinted: false, picked: null };
 }
 
+/* ============ 최근 기록 ============
+   부모 화면이 "요즘 어려워하는 문제"를 알려면 창(window)이 필요하다.
+   seen·right는 누적값이라 못 쓴다. 문제마다 최근 결과를 짧게 남긴다.
+
+   "0819:x"  →  x 오답 / h 힌트 쓰고 정답 / o 혼자 정답        (최신이 앞) */
+
+export const LOG_MAX = 10;
+export const LOG_KEEP_DAYS = 14;
+
+const stampOf = today => String(today).slice(5, 7) + String(today).slice(8, 10);
+
+/* MMDD에는 연도가 없다. 오늘보다 미래로 읽히면 작년 것이다 —
+   이 보정을 빼면 12월 31일에 1월 기록을 내년으로 보고 영영 안 지운다. */
+function tagDate(tag, ref) {
+  const m = +tag.slice(0, 2), d = +tag.slice(2, 4);
+  if (!m || !d) return null;
+  let when = new Date(ref.getFullYear(), m - 1, d);
+  if (when > ref) when = new Date(ref.getFullYear() - 1, m - 1, d);
+  return when;
+}
+
+export function readLog(log, days = 7, ref = new Date()) {
+  const floor = new Date(ref);
+  floor.setDate(floor.getDate() - (days - 1));
+  floor.setHours(0, 0, 0, 0);
+
+  const out = { o: 0, h: 0, x: 0, seen: 0, recent: [] };
+  for (const item of log || []) {
+    const [tag, code] = String(item).split(':');
+    if (code !== 'o' && code !== 'h' && code !== 'x') continue;
+    const when = tagDate(tag, ref);
+    if (!when || when < floor) continue;
+    out[code]++;
+    out.seen++;
+    out.recent.push(code);
+  }
+  return out;
+}
+
+/* 오답 2점, 힌트 쓰고 정답 1점. 혼자 맞힌 것은 0점. */
+export const weakness = c => c.x * 2 + c.h;
+
+export function pruneLogs(facts, ref = new Date()) {
+  const floor = new Date(ref);
+  floor.setDate(floor.getDate() - (LOG_KEEP_DAYS - 1));
+  floor.setHours(0, 0, 0, 0);
+
+  for (const fact of Object.values(facts)) {
+    if (!fact.log) continue;
+    fact.log = fact.log.filter(item => {
+      const when = tagDate(String(item).slice(0, 4), ref);
+      return when && when >= floor;
+    }).slice(0, LOG_MAX);
+  }
+}
+
 /* 마스터리 갱신 — 방금 마스터했으면 true.
    쉬운 문제는 마스터로 세지 않는다(별·스티커·통계 기준을 한 곳에서 결정). */
 export function applyResult(entry, fact, right, usedHint, today, elapsedMs) {
   fact.seen++;
   fact.lastSeenDay = today;
+
+  // rewardable 판정 바깥이다. 쉬운 문제는 별을 안 주지만
+  // 부모는 아이가 그걸 틀리는지 알아야 한다. 보상과 계측은 다른 문제다.
+  fact.log = [`${stampOf(today)}:${!right ? 'x' : usedHint ? 'h' : 'o'}`,
+              ...(fact.log || [])].slice(0, LOG_MAX);
   if (right) {
     fact.right++;
     if (!fact.bestMs || elapsedMs < fact.bestMs) fact.bestMs = elapsedMs;

@@ -1,5 +1,5 @@
 import { CHARACTERS, GRASS_ICON, HATS, SCARVES, STAR_ICON, charById, charSVG, isHat, itemById } from './characters.js';
-import { TARGETS, factKey, buildIndex, packList, seedFacts, makeQuestion, applyResult } from './engine.js';
+import { TARGETS, factKey, buildIndex, packList, pruneLogs, seedFacts, makeQuestion, applyResult } from './engine.js';
 
 const BASE_REWARD = 3;    // 풀어보기만 해도
 const BONUS_REWARD = 3;   // 맞추면 조금 더
@@ -8,7 +8,8 @@ const LAST_ID = 'gugudan-last-profile';
 
 const app = document.getElementById('app');
 let P = null;             // 프로필
-let INDEX = {};           // 문제 전체 (내장 구구단 + 부모 팩)
+let INDEX = {};           // 문제 전체 (내장 구구단 + 부모 팩) — 부모가 끈 것은 빠져 있다
+let PACKS = [];           // 서버에서 받은 팩 원본. 프로필마다 제외 목록이 달라 다시 짓는다
 let MESSAGES = {};        // content/messages.csv
 const recent = [];        // 최근 쓴 응원 5개 — 바로 반복되면 금방 질린다
 const recentKeys = [];    // 최근 낸 문제 3개 — 같은 문제가 연달아 나오지 않게
@@ -62,11 +63,14 @@ function rollDay() {
     P.totals.daysPlayed++;
   }
   P.daily = { day: today(), solved: 0, goal: goal(), speedRuns: 0, right: 0, grass: 0, star: 0 };
+  pruneLogs(P.facts);   // 14일 지난 기록은 버린다 — 부모 화면은 7일만 본다
 }
 
 async function enter(id) {
   P = await api(`/api/profile/${encodeURIComponent(id)}`);
   localStorage.setItem(LAST_ID, id);
+  P.disabled ||= { problems: [], packs: [] };
+  INDEX = buildIndex(PACKS, P.disabled);   // 부모가 끈 문제는 여기서 빠진다
   seedFacts(INDEX, P.facts);
   rollDay();
   await save();
@@ -84,7 +88,8 @@ async function start() {
   const { profiles, packs, messages } = await api('/api/bootstrap');
   MESSAGES = messages || {};
   const loaded = await Promise.all((packs || []).map(p => api(`/api/pack/${encodeURIComponent(p.id)}`)));
-  INDEX = buildIndex(loaded);
+  PACKS = loaded;
+  INDEX = buildIndex(loaded);   // 프로필을 고르면 그 아이의 제외 목록으로 다시 짓는다
 
   const last = localStorage.getItem(LAST_ID);
   if (profiles.length === 1) return enter(profiles[0].id);
