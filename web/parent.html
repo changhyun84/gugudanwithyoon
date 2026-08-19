@@ -60,6 +60,8 @@
   .picks button { width:auto; margin:0; padding:8px 13px; font-size:14px; }
   .picks button.on { background:#2f3b46; color:#fff; border-color:#2f3b46; }
   .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .shut { opacity:.45; }
+  .cut { border-top:1px dashed #c9d3c9; margin:6px 0 4px; padding-top:4px; font-size:12px; color:#7c8c7c; }
   .row input[type=number] { width:5.5em; }
   .row button { flex:1; }
 </style>
@@ -92,6 +94,16 @@
     <p class="rule">이 목록을 아이에게 직접 묻지 마세요. 약한 문제는 게임이 알아서 다시 냅니다.
       고칠 것이 있으면 아이가 아니라 문제 파일을 고치세요.</p>
     <div id="weak">불러오는 중…</div>
+  </section>
+
+  <section>
+    <h2>학습 진도</h2>
+    <p class="hint">과목마다 <b>어디까지 열지</b>를 정합니다. 그 뒤의 단원은 아이에게 안 나옵니다 —
+      다음 학기 문제를 미리 넣어두어도 괜찮습니다.</p>
+    <p class="hint"><b>진도를 내려도 사라지는 것은 없습니다.</b> 앞으로 그 문제가 안 나올 뿐,
+      아이가 쌓은 진도·별·스티커·해금한 친구는 그대로입니다.</p>
+    <div id="progress">불러오는 중…</div>
+    <p class="msg" id="msgProg"></p>
   </section>
 
   <section>
@@ -185,6 +197,7 @@ $('who').innerHTML = boot.profiles.map(p => `<option value="${esc(p.id)}">${esc(
   || '<option value="">아직 없습니다</option>';
 
 const loaded = await Promise.all((boot.packs || []).map(p => api(`/api/pack/${encodeURIComponent(p.id)}`)));
+const PACKS = loaded;   // subject·unit·order가 실려 있다
 ALL = buildIndexAll(loaded);   // 부모는 아직 안 연 단원도 봐야 진도를 정할 수 있다
 
 const packNames = new Map();
@@ -199,6 +212,7 @@ async function showStat() {
   OFF = { problems: [...(PROFILE.disabled?.problems || [])],
           packs: [...(PROFILE.disabled?.packs || [])] };
   if (WISHDATA) showWishes(WISHDATA);   // 아이를 바꾸면 소원권 목록도 따라간다
+  showProgress();
   if (typeof showAllowLog === 'function') showAllowLog();
   dirty = false;
 
@@ -312,6 +326,105 @@ function showWeak() {
         <td class="a">${esc(answerOf(r.e))}</td>
         <td>${chips(r.c.recent)}</td>
         <td class="do">${esc(todo(r.e))}</td></tr>`).join('') + '</table>';
+}
+
+/* ============ 학습 진도 ============ */
+
+function unitsBySubject() {
+  const out = {};
+  for (const p of PACKS) {
+    if (!p.subject || !p.unit) continue;   // 폴더 밖이거나 번호가 없으면 진도 관리 대상이 아니다
+    (out[p.subject] ||= []).push(p);
+  }
+  for (const list of Object.values(out)) list.sort((a, b) => a.order - b.order);
+  return out;
+}
+
+function packStat(packId) {
+  const keys = Object.entries(ALL).filter(([, e]) => e.packId === packId && e.rewardable);
+  return { total: keys.length, done: keys.filter(([k]) => PROFILE?.facts?.[k]?.m === 4).length };
+}
+
+const shortName = p => p.name.startsWith(p.unit) ? p.name.slice(p.unit.length).trim() || p.name : p.name;
+
+function showProgress() {
+  const subs = unitsBySubject();
+  if (!Object.keys(subs).length) {
+    $('progress').innerHTML =
+      '<p class="hint">아직 과목 폴더가 없습니다. <code>content/problems/수학/1-1 구구단.csv</code> 처럼 ' +
+      '폴더를 만들면 여기서 단원별로 진도를 정할 수 있습니다. ' +
+      '지금 파일을 옮기지 않아도 게임은 그대로 돕니다.</p>';
+    return;
+  }
+  if (!PROFILE) return;
+
+  // 열림 판정은 engine.js와 같은 함수를 쓴다. 규칙을 두 곳에 두면 반드시 어긋난다.
+  const open = openPacks(PACKS, PROFILE.progress);
+
+  $('progress').innerHTML = Object.entries(subs).map(([subject, list]) => {
+    const lastOpen = [...list].reverse().find(p => open.has(p.id)) || list[0];
+    let cut = false;
+    const rows = list.map(p => {
+      const on = open.has(p.id), s = packStat(p.id);
+      const line = `<div class="${on ? '' : 'shut'}">${on ? '✓' : '·'} <b>${esc(p.unit)}</b> ` +
+        `${esc(shortName(p))} — 문제 ${s.total}개` +
+        (on && s.total ? ` · 완전히 외운 것 ${s.done}` : '') + '</div>';
+      if (!on && !cut) { cut = true; return '<div class="cut">여기부터는 아직 안 열렸습니다</div>' + line; }
+      return line;
+    }).join('');
+
+    const next = list[list.indexOf(lastOpen) + 1];
+    const st = packStat(lastOpen.id);
+    const suggest = next && st.total && st.done === st.total
+      ? `<p class="msg">${esc(shortName(lastOpen))}을(를) 다 외웠어요. ` +
+        `<button data-open="${esc(subject)}" data-unit="${esc(next.unit)}">${esc(next.name)} 열기</button></p>`
+      : '';
+
+    return `<div class="pack">
+      <div class="row"><b>${esc(subject)}</b><span>여기까지 열기</span>
+        <select data-sel="${esc(subject)}">${list.map(p =>
+          `<option value="${esc(p.unit)}"${p.id === lastOpen.id ? ' selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
+        <button data-save="${esc(subject)}">저장</button></div>
+      ${rows}${suggest}
+      <p class="warn" data-warn="${esc(subject)}" style="display:none"></p>
+    </div>`;
+  }).join('');
+
+  $('progress').querySelectorAll('[data-sel]').forEach(sel => sel.onchange = () => {
+    const subject = sel.dataset.sel, list = subs[subject];
+    const now = [...list].reverse().find(p => open.has(p.id)) || list[0];
+    const to = list.find(p => p.unit === sel.value);
+    const warn = $('progress').querySelector(`[data-warn="${CSS.escape(subject)}"]`);
+    if (to && to.order < now.order) {
+      warn.textContent = `${shortName(to)}까지로 내리면 그 뒤 단원이 앞으로 안 나옵니다. ` +
+        '아이가 쌓은 진도·별·스티커는 그대로 남습니다.';
+      warn.style.display = '';
+    } else warn.style.display = 'none';
+  });
+
+  $('progress').querySelectorAll('[data-save]').forEach(b => b.onclick = () => {
+    const subject = b.dataset.save;
+    saveProgress(subject, $('progress').querySelector(`[data-sel="${CSS.escape(subject)}"]`).value);
+  });
+  $('progress').querySelectorAll('[data-open]').forEach(b =>
+    b.onclick = () => saveProgress(b.dataset.open, b.dataset.unit));
+}
+
+async function saveProgress(subject, unit) {
+  $('msgProg').textContent = '저장 중…';
+  try {
+    // 아이가 지금 놀고 있을 수 있다. 방금 상태를 다시 받아 progress만 얹는다 (구현-현황 2.11).
+    const fresh = await api(`/api/profile/${encodeURIComponent(PROFILE.id)}`);
+    fresh.progress = { ...(fresh.progress || {}), [subject]: unit };
+    await fetch(`/api/profile/${encodeURIComponent(PROFILE.id)}`,
+                { method: 'PUT', body: JSON.stringify(fresh) });
+    PROFILE = fresh;
+    $('msgProg').textContent = `${subject} — ${unit}까지 열었습니다. 아이패드에서 새로고침하면 반영됩니다.`;
+    showProgress();
+    showStock();
+  } catch {
+    $('msgProg').textContent = '저장하지 못했습니다. 다시 눌러주세요.';
+  }
 }
 
 /* ============ 문제 켜고 끄기 ============ */

@@ -179,5 +179,25 @@ ok('전부 꺼도 복구된다',
   Object.keys(E.buildIndex([], { problems: [], packs: ['gugudan'] })).length > 0);
 ok('무한히 돌지 않는다', Object.keys(E.buildIndexAll([])).length > 0);
 
+/* ── 부모 화면이 조용히 죽지 않는가 ── */
+group('부모 화면 import — 이게 어긋나면 부모 화면 전체가 조용히 죽습니다 (2.12)');
+
+const parentSrc = readFileSync(new URL('../web/parent.html', import.meta.url), 'utf8');
+const imported = (/import\s*\{([^}]+)\}\s*from\s*'\/engine\.js'/.exec(parentSrc)?.[1] || '')
+  .split(',').map(s => s.trim()).filter(Boolean);
+ok('engine.js에서 무언가를 가져온다', imported.length > 0);
+const missing = imported.filter(n => !(n in E));
+ok(`가져오는 이름이 전부 engine.js에 있다 (${imported.join(', ')})`, !missing.length);
+if (missing.length) console.log('     없는 이름:', missing.join(', '));
+
+ok('부모 화면은 buildIndexAll을 쓴다 — 안 연 단원도 봐야 진도를 정한다',
+  parentSrc.includes('buildIndexAll(loaded)'));
+ok('부모 화면과 엔진이 같은 openPacks를 쓴다 — 규칙을 두 곳에 두면 어긋난다',
+  imported.includes('openPacks') && parentSrc.includes('openPacks(PACKS'));
+ok('진도를 저장할 때 프로필을 다시 받아 얹는다 (2.11)',
+  /const fresh = await api\(`\/api\/profile\//.test(parentSrc) && parentSrc.includes('fresh.progress'));
+ok('진도를 내릴 때 사라지는 것이 없다고 알려준다',
+  parentSrc.includes('그대로 남습니다') || parentSrc.includes('사라지는 것은 없습니다'));
+
 console.log(`\n${pass}개 통과, ${fail}개 실패`);
 process.exit(fail ? 1 : 0);
