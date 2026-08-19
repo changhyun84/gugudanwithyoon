@@ -17,25 +17,72 @@ HEADERS = {
 }
 
 
+UNIT_RE = re.compile(r'^\d+(?:[-.]\d+)*')
+PACK_SUFFIX = ('.csv', '.md')
+
+
+def natural(name):
+    """1-10이 1-2보다 앞에 오지 않게 한다. 숫자 조각은 숫자로 비교한다.
+       이 정렬은 화면 순서일 뿐 아니라 문제 order로 이어져 **출제 순서**까지 정한다."""
+    return [(0, int(s)) if s.isdigit() else (1, s)
+            for s in re.split(r'(\d+)', name) if s]
+
+
+def by_name(path):
+    return natural(path.name)
+
+
 def scan(folder):
-    """폴더의 모든 팩을 읽는다 — 파일명이 팩 이름, 파일명 슬러그가 팩 id"""
-    packs = []
-    for path in sorted(folder.glob('*')):
-        if path.suffix.lower() not in ('.csv', '.md'):
-            continue
-        text, enc_warning = read_text(path)
-        parse = parse_csv if path.suffix.lower() == '.csv' else parse_md
-        name, rows, warnings = parse(text, path.stem)
-        problems, more = build_problems(rows, slug(path.stem))
-        packs.append({
-            'id': slug(path.stem),
-            'name': name,
-            'file': path.name,
-            'count': len(problems),
-            'problems': problems,
-            'warnings': ([enc_warning] if enc_warning else []) + warnings + more,
-        })
+    """폴더 = 과목, 파일명 앞의 1-1 = 단원 (기획서 16장).
+
+       한 단계만 내려간다 — 과목·단원 두 단계면 충분하고, 깊어지면 부모가 헷갈린다.
+       폴더 밖의 파일은 과목 없이 지금처럼 동작한다. 기존 파일을 옮기지 않아도 된다."""
+    packs, taken = [], {}
+
+    def add(path, subject, order):
+        pid = slug(path.stem)
+        if pid in taken:
+            # 팩 id를 바꾸면 아이 진도가 통째로 날아간다. 뒤엣것을 버리고 알린다.
+            packs[taken[pid]]['warnings'].append(
+                f'{path.name} — 이름이 {packs[taken[pid]]["file"]}와 겹쳐서 읽지 않았습니다. '
+                f'파일 이름을 다르게 해주세요.')
+            return
+        taken[pid] = len(packs)
+        packs.append(read_pack(path, pid, subject, order))
+
+    if not folder.exists():
+        return packs
+
+    for path in sorted(folder.iterdir(), key=by_name):
+        if path.is_dir():
+            files = [f for f in sorted(path.iterdir(), key=by_name)
+                     if f.is_file() and f.suffix.lower() in PACK_SUFFIX]
+            for order, f in enumerate(files):
+                add(f, path.name, order)
+        elif path.is_file() and path.suffix.lower() in PACK_SUFFIX:
+            add(path, None, 0)
     return packs
+
+
+def read_pack(path, pid, subject, order):
+    """팩 id는 **파일명 슬러그만** 쓴다. 과목을 id에 넣으면 파일을 폴더로 옮기는 것만으로
+       문제 키가 바뀌어 아이가 몇 달 쌓은 진도·마스터·스티커가 통째로 날아간다."""
+    text, enc_warning = read_text(path)
+    parse = parse_csv if path.suffix.lower() == '.csv' else parse_md
+    name, rows, warnings = parse(text, path.stem)
+    problems, more = build_problems(rows, pid)
+    unit = UNIT_RE.match(path.stem)
+    return {
+        'id': pid,
+        'name': name,
+        'subject': subject,                 # 폴더 이름. 폴더 밖이면 None
+        'unit': unit.group(0) if unit else None,
+        'order': order,                     # 과목 안에서의 자연 정렬 순서
+        'file': f'{subject}/{path.name}' if subject else path.name,
+        'count': len(problems),
+        'problems': problems,
+        'warnings': ([enc_warning] if enc_warning else []) + warnings + more,
+    }
 
 
 CHAR_NAMES = {'양': 'sheep', '고양이': 'cat', '토끼': 'rabbit', '코알라': 'koala',

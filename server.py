@@ -143,7 +143,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({
                 "profiles": list_profiles(),
                 "settings": self.public_settings(),
-                "packs": [{"id": p["id"], "name": p["name"], "count": p["count"]} for p in load_packs() if p["count"]],
+                "packs": [{k: p[k] for k in ("id", "name", "subject", "unit", "order", "count")}
+                          for p in load_packs() if p["count"]],
                 "messages": load_messages()[0],
                 "wishes": load_wishes()[0],
             })
@@ -180,7 +181,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def get_pack(self, pack_id):
         pack = next((p for p in load_packs() if p["id"] == pack_id), None)
-        self.send_json({"id": pack["id"], "name": pack["name"], "problems": pack["problems"]}) \
+        self.send_json({k: pack[k] for k in ("id", "name", "subject", "unit", "order", "problems")}) \
             if pack else self.send_error(404)
 
     def get_parent_packs(self):
@@ -188,7 +189,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({"error": "PIN이 다릅니다"}, 403)
         wishes, wish_warnings = load_wishes()
         self.send_json({
-            "packs": [{k: p[k] for k in ("id", "name", "file", "count", "warnings")} for p in load_packs()],
+            "packs": [{k: p[k] for k in ("id", "name", "subject", "unit", "order", "file", "count", "warnings")}
+                      for p in load_packs()],
             "messages": {"file": "messages.csv", "warnings": load_messages()[1]},
             "wishes": {"file": "wishes.csv", "list": wishes, "warnings": wish_warnings},
         })

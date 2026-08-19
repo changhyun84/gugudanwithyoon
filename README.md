@@ -27,7 +27,7 @@
 ## 지금 상태
 
 **완료** — 서버 뼈대 / v1 이식 / 문제 팩 / 캐릭터 5종 / 계측·부모 현황 / **5B 보상 확장 전부**
-**다음** — 5C 학습 진도 관리 (과목·단원 폴더) → 6A 단답형
+**다음** — 5C 학습 진도 관리 (5C-1 완료 / progress·부모 화면·아이 화면) → 6A 단답형
 **그 뒤** — 6A 단답형 → 6B 사진으로 단어 등록 → 6C 서술형 → 6D 서술형 AI 반응 → 7 모드 확장 → 8 마감
 
 > 6A~6D는 아이가 요청한 확장(단답형·서술형·영어 단어)입니다.
@@ -48,7 +48,7 @@ web/          app.js · engine.js · characters.js · backgrounds.js · styles.c
 content/      problems/*.csv|md · messages.csv · wishes.csv
 data/         자동 생성, git 제외
 sim/          60days.mjs  (보상 균형 시뮬레이션 — 보상을 건드리기 전에 반드시)
-test/         t_book.mjs · t_shop.mjs · t_wish.mjs · t_allow.mjs  (jsdom 없이 돎)
+test/         t_book · t_shop · t_wish · t_allow · t_units  .mjs  (jsdom 없이 돎)
 ```
 
 `ai.py`는 6B에서 새로 생깁니다. **`server.py`에 합치지 마세요** — 외부 호출은 실패하는 코드라 격리합니다.
@@ -88,6 +88,7 @@ node test/t_book.mjs       # 30개 — 도감. 판 보상이 줄어드는 경로
 node test/t_shop.mjs       # 31개 — 상점 단계·전용 아이템. 선반이 닫히는 경로가 없는지
 node test/t_wish.mjs       # 33개 — 배경·소원권. 받은 소원권이 사라지지 않는지
 node test/t_allow.mjs      # 24개 — 용돈. 화폐가 풀인지, 주 1회인지
+node test/t_units.mjs      # 24개 — 과목·단원 스캔. 팩 id가 안 바뀌는지
 node sim/60days.mjs 180    # 보상 균형. 가격표를 characters.js·backgrounds.js에서 그대로 읽는다
 ```
 
@@ -111,7 +112,7 @@ cp web/characters.js /tmp/ch.mjs && node --input-type=module -e "import('/tmp/ch
 
 ## 첫 작업 지시 예시
 
-> `기획서.md` 16장과 `구현-현황.md` 18장을 읽고, 5C-1부터 만들어줘.
-> `packs.py`의 재귀 스캔 + 자연 정렬 + `subject`/`unit` 필드까지야. 아이 화면은 그대로 두고.
-> **팩 id는 파일명 슬러그 그대로 두는 게 절대 조건이야** — 바꾸면 아이 진도가 통째로 날아가.
-> `1-10`이 `1-2`보다 앞에 오는 지금 정렬 버그부터 고쳐줘.
+> `기획서.md` 16장과 `구현-현황.md` 18·19장을 읽고, 5C-2를 만들어줘.
+> 프로필에 `progress` 필드를 넣고 `buildIndex(packs, disabled, progress)`로 거르면 돼.
+> **`disabled`와 합치지 마** — `progress`가 없으면 뒤에 새 파일을 넣는 순간 열려버려.
+> 과목이 `progress`에 없으면 **첫 단원만** 열려야 해.
