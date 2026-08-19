@@ -26,8 +26,8 @@
 
 ## 지금 상태
 
-**완료** — 서버 뼈대 / v1 이식 / 문제 팩 / 캐릭터 5종 + 응원 메시지 / 계측·부모 현황·문제 켜고 끄기
-**다음** — 5B 보상 확장 (도감·상점·배경·소원권 완료 / 용돈만 남음)
+**완료** — 서버 뼈대 / v1 이식 / 문제 팩 / 캐릭터 5종 / 계측·부모 현황 / **5B 보상 확장 전부**
+**다음** — 6A 단답형
 **그 뒤** — 6A 단답형 → 6B 사진으로 단어 등록 → 6C 서술형 → 6D 서술형 AI 반응 → 7 모드 확장 → 8 마감
 
 > 6A~6D는 아이가 요청한 확장(단답형·서술형·영어 단어)입니다.
@@ -48,7 +48,7 @@ web/          app.js · engine.js · characters.js · backgrounds.js · styles.c
 content/      problems/*.csv|md · messages.csv · wishes.csv
 data/         자동 생성, git 제외
 sim/          60days.mjs  (보상 균형 시뮬레이션 — 보상을 건드리기 전에 반드시)
-test/         t_book.mjs · t_shop.mjs · t_wish.mjs  (jsdom 없이 돎)
+test/         t_book.mjs · t_shop.mjs · t_wish.mjs · t_allow.mjs  (jsdom 없이 돎)
 ```
 
 `ai.py`는 6B에서 새로 생깁니다. **`server.py`에 합치지 마세요** — 외부 호출은 실패하는 코드라 격리합니다.
@@ -87,6 +87,7 @@ test/         t_book.mjs · t_shop.mjs · t_wish.mjs  (jsdom 없이 돎)
 node test/t_book.mjs       # 30개 — 도감. 판 보상이 줄어드는 경로가 없는지
 node test/t_shop.mjs       # 31개 — 상점 단계·전용 아이템. 선반이 닫히는 경로가 없는지
 node test/t_wish.mjs       # 33개 — 배경·소원권. 받은 소원권이 사라지지 않는지
+node test/t_allow.mjs      # 24개 — 용돈. 화폐가 풀인지, 주 1회인지
 node sim/60days.mjs 180    # 보상 균형. 가격표를 characters.js·backgrounds.js에서 그대로 읽는다
 ```
 
@@ -110,7 +111,7 @@ cp web/characters.js /tmp/ch.mjs && node --input-type=module -e "import('/tmp/ch
 
 ## 첫 작업 지시 예시
 
-> `기획서.md`와 `구현-현황.md` 16장을 읽고, 5B의 마지막인 용돈을 만들어줘.
-> 용돈은 **풀 🌿**이야 — 별로 사게 하면 "틀리면 돈을 못 번다"가 돼서 원칙 2.2가 무너져.
-> 주 1회 정해진 요일에만 바꿀 수 있게 하고, 기본은 꺼짐이야.
-> 넣기 전후로 `node sim/60days.mjs 180`을 돌려서 풀 잔고가 계속 쌓이지 않는지 봐줘.
+> `기획서.md` 12장과 `구현-현황.md` 9장을 읽고, 6A 단답형을 만들어줘.
+> `유형` 열(기술설계서 5.6)부터 `packs.py`에 넣고, 그 다음 입력 화면이야.
+> **「보기 보여줘」와 「모르겠어」를 같이 넣어줘** — 막힌 아이가 누를 게 없으면 안 돼.
+> 입력창에 `spellcheck=false`를 빼먹지 마. 빨간 밑줄은 원칙 2.1 위반이야.

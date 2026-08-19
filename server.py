@@ -24,7 +24,12 @@ SETTINGS_PATH = DATA / "settings.json"
 ID_RE = re.compile(r"^[가-힣a-zA-Z0-9_-]{1,20}$")
 MAX_BODY = 1024 * 1024
 KEEP_BACKUPS = 30
-DEFAULT_SETTINGS = {"parentPin": "0000", "speedModeEnabled": False, "defaultGoal": 20, "port": 8770}
+DEFAULT_SETTINGS = {
+    "parentPin": "0000", "speedModeEnabled": False, "defaultGoal": 20, "port": 8770,
+    # 용돈 — 기본 꺼짐. 주 1회 정해진 요일에만 바꾼다.
+    # 매일 환전되면 임금이 되고, 임금이 되면 놀이가 노동이 된다(원칙 2.5).
+    "allowance": {"on": False, "per": 100, "won": 200, "day": 6, "max": 500},
+}
 
 def decode_path(raw):
     """브라우저는 퍼센트 인코딩으로, curl 등은 원문 바이트로 보낸다"""
@@ -225,8 +230,14 @@ class Handler(BaseHTTPRequestHandler):
         return self.headers.get("X-Parent-Pin") == load_settings()["parentPin"]
 
     def public_settings(self):
+        """아이 화면으로 나가는 것만 골라 담는다. 전개(**s)로 바꾸지 말 것 —
+           나중에 API 키 같은 것이 들어오면 그날 바로 새어 나간다."""
         s = load_settings()
-        return {"speedModeEnabled": s["speedModeEnabled"], "defaultGoal": s["defaultGoal"]}
+        return {
+            "speedModeEnabled": s["speedModeEnabled"],
+            "defaultGoal": s["defaultGoal"],
+            "allowance": {**DEFAULT_SETTINGS["allowance"], **(s.get("allowance") or {})},
+        }
 
     def read_body(self):
         length = min(int(self.headers.get("Content-Length") or 0), MAX_BODY)

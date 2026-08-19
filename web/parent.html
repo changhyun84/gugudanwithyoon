@@ -59,7 +59,8 @@
   .picks { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:6px; }
   .picks button { width:auto; margin:0; padding:8px 13px; font-size:14px; }
   .picks button.on { background:#2f3b46; color:#fff; border-color:#2f3b46; }
-  .row { display:flex; gap:10px; align-items:center; }
+  .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .row input[type=number] { width:5.5em; }
   .row button { flex:1; }
 </style>
 </head>
@@ -115,6 +116,24 @@
       아이패드에서 새로고침만 하면 됩니다. 아래 목록이 안 보이면 PIN을 확인하세요.</p>
     <div id="packs">불러오는 중…</div>
     <button id="reload">다시 읽기</button>
+  </section>
+
+  <section>
+    <h2>용돈</h2>
+    <p class="hint">아이가 <b>풀 🌿</b>을 용돈으로 바꿉니다. 별이 아닙니다 —
+      별은 문제를 완전히 외웠을 때만 나오므로, 별로 바꾸게 하면 <b>틀리면 돈을 못 버는</b> 구조가 됩니다.
+      풀은 풀기만 해도 쌓입니다.</p>
+    <p class="hint"><b>주 1회, 정한 요일에만</b> 바꿉니다. 매일 바꿀 수 있으면 놀이가 일이 됩니다.</p>
+    <label><input id="allowOn" type="checkbox"> 용돈 켜기</label>
+    <div class="row">
+      <span>풀 <input id="allowPer" type="number" min="10" max="1000" step="10"> 개 =</span>
+      <span><input id="allowWon" type="number" min="10" max="10000" step="10"> 원</span>
+      <span>바꾸는 날 <select id="allowDay"></select>요일</span>
+      <span>한 번에 최대 <input id="allowMax" type="number" min="100" max="5000" step="100"> 풀</span>
+    </div>
+    <button id="saveAllow">용돈 설정 저장</button>
+    <p class="msg" id="msgAllow"></p>
+    <div id="allowLog"></div>
   </section>
 
   <section>
@@ -180,6 +199,7 @@ async function showStat() {
   OFF = { problems: [...(PROFILE.disabled?.problems || [])],
           packs: [...(PROFILE.disabled?.packs || [])] };
   if (WISHDATA) showWishes(WISHDATA);   // 아이를 바꾸면 소원권 목록도 따라간다
+  if (typeof showAllowLog === 'function') showAllowLog();
   dirty = false;
 
   const p = PROFILE;
@@ -455,6 +475,52 @@ function showWishes(w) {
         [...got].reverse().map(g => `<div>· ${esc(g.day)} — ${esc(g.nm)} (별 ${g.star})</div>`).join('') + '</div>'
       : '<p class="hint">아직 바꾼 소원이 없습니다.</p>');
 }
+
+/* ============ 용돈 ============ */
+
+const DAYNAMES = ['일', '월', '화', '수', '목', '금', '토'];
+$('allowDay').innerHTML = DAYNAMES.map((d, i) => `<option value="${i}">${d}</option>`).join('');
+
+let ALLOW = null;
+
+async function showAllowance() {
+  const boot = await api('/api/bootstrap');
+  ALLOW = boot.settings?.allowance || { on: false, per: 100, won: 200, day: 6, max: 500 };
+  $('allowOn').checked = !!ALLOW.on;
+  $('allowPer').value = ALLOW.per;
+  $('allowWon').value = ALLOW.won;
+  $('allowDay').value = ALLOW.day;
+  $('allowMax').value = ALLOW.max;
+  showAllowLog();
+}
+
+function showAllowLog() {
+  const got = PROFILE?.allowance || [];
+  $('allowLog').innerHTML = got.length
+    ? '<div class="pack"><b>아이가 바꾼 용돈</b>' +
+      [...got].reverse().map(a =>
+        `<div>· ${esc(a.day)} — ${a.won.toLocaleString()}원 (풀 ${a.grass}개)</div>`).join('') +
+      `<div><b>합계 ${got.reduce((s, a) => s + a.won, 0).toLocaleString()}원</b></div></div>`
+    : '<p class="hint">아직 바꾼 용돈이 없습니다. <b>목록은 지워지지 않습니다.</b></p>';
+}
+
+$('saveAllow').onclick = async () => {
+  const allowance = {
+    on: $('allowOn').checked,
+    per: Math.max(10, Number($('allowPer').value) || 100),
+    won: Math.max(10, Number($('allowWon').value) || 200),
+    day: Number($('allowDay').value),
+    max: Math.max(100, Number($('allowMax').value) || 500),
+  };
+  const res = await api('/api/parent/settings', {
+    method: 'PUT', headers: { 'X-Parent-Pin': $('pin').value },
+    body: JSON.stringify({ allowance })
+  });
+  $('msgAllow').textContent = res.saved
+    ? `저장했습니다. ${DAYNAMES[allowance.day]}요일마다 최대 ${(allowance.max / allowance.per * allowance.won).toLocaleString()}원.`
+    : res.error;
+};
+showAllowance();
 
 $('saveSet').onclick = async () => {
   const res = await api('/api/parent/settings', {

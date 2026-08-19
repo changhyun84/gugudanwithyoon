@@ -44,9 +44,10 @@ writeFileSync(join(tmp, 'backgrounds.mjs'), readFileSync(new URL('../web/backgro
 const { BACKGROUNDS: BG_LIST } = await import('file://' + join(tmp, 'backgrounds.mjs'));
 const BACKGROUNDS = BG_LIST.filter(b => b.star).map(b => b.star);   // 무료 배경 제외 (누적 83)
 
-const WISH_COST = 12;   // content/wishes.csv 평균
+const WISH_COST = 12;      // content/wishes.csv 평균
+const ALLOW_PER_WEEK = 500;   // 용돈 상한 (data/settings.json 기본값). 주 1회
 
-function simulate({ story = false, wishes = true, days = DAYS } = {}) {
+function simulate({ story = false, wishes = true, allowance = true, days = DAYS } = {}) {
   const index = buildIndex(PACKS);
   const facts = {};
   seedFacts(index, facts);
@@ -58,6 +59,7 @@ function simulate({ story = false, wishes = true, days = DAYS } = {}) {
   let starSpent = 0, grassSpent = 0, friends = 0, bg = 0, dryDay = null, wishCount = 0;
   const recent = [], packDone = new Set(), bought = new Set(), rows = [];
   const met = new Set(['sheep']);
+  let allowWon = 0;
 
   for (let d = 0; d < days; d++) {
     const today = new Date(Date.UTC(2026, 8, 1) + d * 86400000).toISOString().slice(0, 10);
@@ -91,6 +93,12 @@ function simulate({ story = false, wishes = true, days = DAYS } = {}) {
 
     if (dryDay === null && friends === FRIENDS.length && bg === BACKGROUNDS.length && !wishes) dryDay = d + 1;
 
+    /* 용돈 — 주 1회, 아이템을 사고 남은 풀에서. 고갈되지 않는 풀 소비처 (구현-현황 17) */
+    if (allowance && d % 7 === 6) {
+      const spare = Math.min(ALLOW_PER_WEEK, Math.floor((grass - grassSpent) / 100) * 100);
+      if (spare > 0) { grassSpent += spare; allowWon += spare / 100 * 200; }
+    }
+
     // 열린 선반에서 살 수 있는 것을 싼 것부터. 전용은 그 친구를 만났을 때만
     const tier = TIER_NEED.reduce((t, need, i) => mastered >= need ? i + 1 : t, 1);
     for (const it of ALL_ITEMS) {
@@ -103,9 +111,9 @@ function simulate({ story = false, wishes = true, days = DAYS } = {}) {
     if ([13, 29, 44, 59, 89, 119, 179].includes(d) && d < days)
       rows.push({ 일: d + 1, 마스터: mastered, 별번: star, 별잔고: star - starSpent,
                   친구: 1 + friends, 배경: 1 + bg,
-                  풀번: grass, 풀잔고: grass - grassSpent, 소원권: wishCount, 산것: bought.size + '/' + ALL_ITEMS.length });
+                  풀번: grass, 풀잔고: grass - grassSpent, 소원권: wishCount, 용돈: allowWon, 산것: bought.size + '/' + ALL_ITEMS.length });
   }
-  return { rows, dryDay, mastered, wishCount };
+  return { rows, dryDay, mastered, wishCount, allowWon };
 }
 
 const total = Object.values(buildIndex(PACKS)).filter(e => e.rewardable).length;
@@ -115,12 +123,13 @@ TIER_NEED.forEach((need, i) => {
   if (need > total) console.log(`  ⚠ 상점 ${i + 1}단계 조건 ${need}문제 마스터는 **도달 불가**`);
 });
 
-const noWish = simulate({ wishes: false, days: Math.max(DAYS, 90) });
-console.log(`\n■ 소원권 없이 — 별 소비처가 마르는 날: ${noWish.dryDay ?? '안 마름'}`);
-console.table(noWish.rows);
+const bare = simulate({ wishes: false, allowance: false, days: Math.max(DAYS, 90) });
+console.log(`\n■ 소원권·용돈 없이 — 별 소비처가 마르는 날: ${bare.dryDay ?? '안 마름'}`);
+console.table(bare.rows);
 
 for (const story of [false, true]) {
   const r = simulate({ story, days: Math.max(DAYS, 90) });
-  console.log(`\n■ 소원권 포함 ${story ? '+ 6C 이야기 판까지' : '(지금 상태)'}  — 바꾼 소원권 ${r.wishCount}장`);
+  console.log(`\n■ 5B 전부 ${story ? '+ 6C 이야기 판까지' : '(지금 상태)'}` +
+    `  — 소원권 ${r.wishCount}장 · 용돈 ${r.allowWon.toLocaleString()}원`);
   console.table(r.rows);
 }

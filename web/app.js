@@ -15,6 +15,7 @@ let INDEX = {};           // 문제 전체 (내장 구구단 + 부모 팩) — �
 let PACKS = [];           // 서버에서 받은 팩 원본. 프로필마다 제외 목록이 달라 다시 짓는다
 let MESSAGES = {};        // content/messages.csv
 let WISHES = [];          // content/wishes.csv — 파일이 없으면 소원권 기능이 안 나타난다
+let ALLOW = null;         // 용돈 설정 (data/settings.json). 부모가 켜야 나타난다
 const recent = [];        // 최근 쓴 응원 5개 — 바로 반복되면 금방 질린다
 const recentKeys = [];    // 최근 낸 문제 3개 — 같은 문제가 연달아 나오지 않게
 let view = 'home', quiz = null, shopTab = 'hat', askedAt = 0, sinceSave = 0, packId = null;
@@ -79,6 +80,7 @@ async function enter(id) {
   P.inventory.backgrounds ||= ['day'];
   P.inventory.activeBackground ||= 'day';
   P.wishes ||= [];                                           // 받은 소원권. 지우지 않는다
+  P.allowance ||= [];                                        // 바꾼 용돈 기록. 지우지 않는다
   INDEX = buildIndex(PACKS, P.disabled);   // 부모가 끈 문제는 여기서 빠진다
   seedFacts(INDEX, P.facts);
   rollDay();
@@ -97,9 +99,11 @@ async function start() {
     localStorage.removeItem(PENDING);
   }
 
-  const { profiles, packs, messages, wishes } = await api('/api/bootstrap');
+  const boot = await api('/api/bootstrap');
+  const { profiles, packs, messages, wishes } = boot;
   MESSAGES = messages || {};
   WISHES = wishes || [];
+  ALLOW = boot.settings?.allowance || null;
   const loaded = await Promise.all((packs || []).map(p => api(`/api/pack/${encodeURIComponent(p.id)}`)));
   PACKS = loaded;
   INDEX = buildIndex(loaded);   // 프로필을 고르면 그 아이의 제외 목록으로 다시 짓는다
@@ -236,6 +240,7 @@ function render() {
   else if (view === 'closet') renderCloset();
   else if (view === 'book') renderCollection();
   else if (view === 'wish') renderWishes();
+  else if (view === 'money') renderAllowance();
   else if (view === 'done') renderDone();
   else renderHome();
   bind();
@@ -295,6 +300,7 @@ function renderHome() {
       '<button class="btn soft" data-go="book">도감</button>' +
     '</div>' +
     (WISHES.length ? '<button class="btn soft mt" data-go="wish">소원권</button>' : '') +
+    (allowanceDay() ? '<button class="btn sun mt" data-go="money">오늘 용돈 바꾸는 날!</button>' : '') +
     `<p class="sub center mt2">구구단 ${learned} / ${TARGETS.length}${extra} &nbsp;·&nbsp; 함께한 날 ${P.totals.daysPlayed}일</p>`;
 
   app.querySelector('#play').onclick = () => packList(INDEX).length > 1 ? go('pick') : startQuiz();
@@ -509,6 +515,86 @@ function useWish(id) {
   renderWishes();
   bind();
   toast('소원권을 받았어! 엄마 아빠한테 보여줘');
+}
+
+/* ============ 용돈 ============ */
+
+/* 풀 🌿로 바꾼다. 별이 아니다 —
+   별은 마스터(=정답)에만 붙으므로 "틀리면 돈을 못 번다"가 된다.
+   풀은 '푼 것'에 주므로 틀려도 용돈이 나온다 (원칙 2.2).
+
+   주 1회 정해진 요일에만. 매일 환전되면 임금이 되고,
+   임금이 되면 놀이가 노동이 된다 (원칙 2.5). */
+
+const DAYNAMES = ['일', '월', '화', '수', '목', '금', '토'];
+
+/* 오늘이 바꾸는 날인가 — 켜져 있고, 요일이 맞고, 아직 안 바꿨을 때 */
+function allowanceDay() {
+  if (!ALLOW?.on) return false;
+  if (new Date().getDay() !== ALLOW.day) return false;
+  const last = P.allowance?.[P.allowance.length - 1];
+  return !last || last.day !== today();
+}
+
+/* 바꿀 수 있는 양 — 상한 안에서, 가진 풀 안에서 */
+function allowanceSteps() {
+  const { per, max } = ALLOW;
+  return [1, 3, 5, 10]
+    .map(n => n * per)
+    .filter(g => g <= max && g <= P.wallet.grass);
+}
+
+function renderAllowance() {
+  const got = [...(P.allowance || [])].reverse();
+  const steps = allowanceSteps();
+  const open = allowanceDay();
+
+  let html = topbar(true) +
+    '<div class="card stage">' + me('happy', 'pop') +
+      '<h1 class="sheepname">용돈</h1>' +
+      `<p class="sub">${DAYNAMES[ALLOW.day]}요일마다 풀을 용돈으로 바꿀 수 있어</p>` +
+      `<p class="sub mt">지금 가진 풀 ${P.wallet.grass}개</p>` +
+    '</div>';
+
+  if (!open) {
+    const why = new Date().getDay() !== ALLOW.day
+      ? `${DAYNAMES[ALLOW.day]}요일에 다시 오면 돼`
+      : '오늘 몫은 벌써 바꿨어. 다음 주에 또 보자!';
+    html += `<p class="sub center mt2">${why}</p>`;
+  } else if (!steps.length) {
+    html += `<p class="sub center mt2">풀이 ${ALLOW.per}개는 있어야 바꿀 수 있어</p>`;
+  } else {
+    html += '<div class="wishes">' + steps.map(g =>
+      `<div class="wish" data-money="${g}">` +
+        `<div class="wtext"><div class="wnm">풀 ${g}개</div></div>` +
+        `<div class="wstar"><span>${(g / ALLOW.per * ALLOW.won).toLocaleString()}원</span></div></div>`
+    ).join('') + '</div>' +
+    '<p class="sub center mt2">한 주에 한 번만 바꿀 수 있어</p>';
+  }
+
+  if (got.length) {
+    html += '<h2 class="center mt2" style="font-size:20px;margin-bottom:2px">받은 용돈</h2>' +
+      '<p class="sub center">엄마 아빠한테 보여주면 돼</p><div class="wishes mt">' +
+      got.map(a => `<div class="wish done"><div class="wtext"><div class="wnm">${a.won.toLocaleString()}원</div>` +
+        `<div class="wnote">${esc(a.day)} · 풀 ${a.grass}개</div></div><div class="wstar">🎟️</div></div>`).join('') +
+      '</div>';
+  }
+
+  app.innerHTML = html;
+  app.querySelectorAll('[data-money]').forEach(b => b.onclick = () => exchange(Number(b.dataset.money)));
+}
+
+function exchange(grass) {
+  if (!allowanceDay()) return toast(`${DAYNAMES[ALLOW.day]}요일에 바꿀 수 있어`);
+  if (grass > ALLOW.max || grass > P.wallet.grass) return;
+
+  const won = grass / ALLOW.per * ALLOW.won;
+  P.wallet.grass -= grass;
+  P.allowance.push({ day: today(), grass, won });
+  save();
+  renderAllowance();
+  bind();
+  toast(`${won.toLocaleString()}원! 엄마 아빠한테 보여줘`);
 }
 
 /* ============ 도감 ============ */
