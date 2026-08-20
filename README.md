@@ -28,7 +28,7 @@
 ## 지금 상태
 
 **완료** — 서버 뼈대 / v1 이식 / 문제 팩 / 캐릭터 5종 / 계측·부모 현황 / **5B 보상 확장** / **5C 학습 진도 관리**
-**다음** — 6A 단답형 (또는 친구들에게 정적 배포 — `구현-현황.md` 23.7)
+**다음** — 6A 단답형
 **그 뒤** — 6A 단답형 → 6B 사진으로 단어 등록 → 6C 서술형 → 6D 서술형 AI 반응 → 7 모드 확장 → 8 마감
 
 > 6A~6D는 아이가 요청한 확장(단답형·서술형·영어 단어)입니다.
@@ -44,15 +44,17 @@
 - 넷은 2026-08-19에 아기 비례로 다시 그렸습니다 (`구현-현황.md` 11장). **양은 손대지 마세요**
 - 부모는 `/parent`에서 최근 7일·어려워하는 문제를 보고, 문제를 **끌** 수 있음 (지우는 게 아님)
 - **기록 내보내기·되돌리기**가 `/parent`에 있음. 홈 화면 추가(PWA)도 됨
+- **정적 배포 가능** — `python3 sim/build-static.py` → `dist/`. GitHub Pages에 자동 배포 (`구현-현황.md` 25장)
 
 ```
 server.py     HTTP + 프로필 저장
 packs.py      CSV/MD 파서
-web/          app.js · engine.js · characters.js · backgrounds.js · styles.css · index.html · parent.html
+web/          app.js · store.js · engine.js · characters.js · backgrounds.js · styles.css · index.html · parent.html
 content/      problems/수학|한국사/*.csv · messages.csv · wishes.csv
 data/         자동 생성, git 제외
-sim/          60days.mjs (보상 균형) · make-icons.py (아이콘) · seed-math|history.py (문제 팩)
-test/         t_book · t_shop · t_wish · t_allow · t_units · t_backup  .mjs
+sim/          60days.mjs (보상 균형) · make-icons.py (아이콘)
+              seed-math|history.py (문제 팩) · build-static.py (Pages 배포용 dist/)
+test/         t_book · t_shop · t_wish · t_allow · t_units · t_backup · t_static  .mjs
 ```
 
 `ai.py`는 6B에서 새로 생깁니다. **`server.py`에 합치지 마세요** — 외부 호출은 실패하는 코드라 격리합니다.
@@ -64,6 +66,10 @@ test/         t_book · t_shop · t_wish · t_allow · t_units · t_backup  .mjs
 ```
 시작하기.bat 더블클릭  →  검은 창의 주소를 아이패드 Safari에 입력
 ```
+
+친구들에게 나눠줄 때는 정적 배포를 씁니다 — `main`에 푸시하면 GitHub Pages에 자동으로 올라갑니다.
+주소는 `https://{아이디}.github.io/{저장소}/`, 부모 화면은 뒤에 `parent.html`.
+진행은 각자 브라우저에 남고 서버에는 아무것도 안 올라갑니다.
 
 부모 화면은 주소 뒤에 `/parent` (PIN 기본 0000). 같은 Wi-Fi면 **부모 폰에서도 열립니다** — 6B의 사진 촬영은 폰이 아니면 안 됩니다.
 
@@ -94,6 +100,7 @@ node test/t_wish.mjs       # 33개 — 배경·소원권. 받은 소원권이 �
 node test/t_allow.mjs      # 24개 — 용돈. 화폐가 풀인지, 주 1회인지
 node test/t_units.mjs      # 68개 — 과목·단원·진도·자유 모드·문제 파일 검산
 node test/t_backup.mjs     # 34개 — 내보내기·되돌리기·PWA
+node test/t_static.mjs     # 53개 — 정적 배포. 두 모드가 갈라지지 않았는지
 node sim/60days.mjs 180    # 보상 균형. 가격표를 characters.js·backgrounds.js에서 그대로 읽는다
 ```
 

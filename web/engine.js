@@ -250,6 +250,15 @@ export function makeChoices(a, b) {
   return set.sort(() => Math.random() - .5).map(String);
 }
 
+function shuffle(list) {
+  const out = [...list];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
 export function makeQuestion(index, facts, recent, today, want = null) {
   const key = pickKey(index, facts, [].concat(recent || []), today, want);
   const e = index[key];
@@ -260,7 +269,9 @@ export function makeQuestion(index, facts, recent, today, want = null) {
     return { key, prompt: `${a} × ${b}`, answer: String(a * b), choices: makeChoices(a, b),
              hint: bridge(a, b), equation: true, state: 'ask', hinted: false, picked: null };
   }
-  return { key, prompt: e.prompt, answer: e.answer, choices: [...e.choices], hint: e.hint,
+  // 보기는 낼 때마다 섞는다. 파일에서 온 순서를 그대로 쓰면 아이가 자리를 외운다 —
+  // 정적 배포에서는 파일이 한 번 구워지므로 안 섞으면 영영 같은 자리다.
+  return { key, prompt: e.prompt, answer: e.answer, choices: shuffle(e.choices), hint: e.hint,
            equation: !e.prompt.trim().endsWith('?'), state: 'ask', hinted: false, picked: null };
 }
 

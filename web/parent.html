@@ -192,9 +192,9 @@
 
 <script type="module">
 import { buildIndexAll, openPacks, isRewardable, readLog, weakness } from '/engine.js';
+import * as store from '/store.js';
 
 const $ = id => document.getElementById(id);
-const api = (url, opt) => fetch(url, opt).then(r => r.json());
 const esc = s => String(s).replace(/[<>&"]/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;' }[c]));
 
 const MIN_POOL = 8;   // engine.js와 같은 값. 이보다 적으면 같은 문제가 반복된다
@@ -203,7 +203,7 @@ const WEEKDAY = ['일','월','화','수','목','금','토'];
 
 let ALL = {};                              // 제외 없이 지은 전체 문제 색인
 let PROFILE = null;
-let WISHDATA = null;   // /api/parent/packs가 같이 실어 보낸다
+let WISHDATA = null;   // 팩 목록을 받을 때 같이 실려 온다
 let OFF = { problems: [], packs: [] };
 let picked = null, dirty = false;
 
@@ -214,12 +214,12 @@ const hasHint = e => !!(e.mul || e.hint);   // 구구단 힌트는 항상 자동
 
 /* ============ 첫 로드 ============ */
 
-const boot = await api('/api/bootstrap');
+const boot = await store.bootstrap();
 $('goal').value = boot.settings.defaultGoal;
 $('who').innerHTML = boot.profiles.map(p => `<option value="${esc(p.id)}">${esc(p.displayName)}</option>`).join('')
   || '<option value="">아직 없습니다</option>';
 
-const loaded = await Promise.all((boot.packs || []).map(p => api(`/api/pack/${encodeURIComponent(p.id)}`)));
+const loaded = (await Promise.all((boot.packs || []).map(p => store.loadPack(p.id)))).filter(Boolean);
 const PACKS = loaded;   // subject·unit·order가 실려 있다
 ALL = buildIndexAll(loaded);   // 부모는 아직 안 연 단원도 봐야 진도를 정할 수 있다
 
@@ -231,7 +231,7 @@ for (const e of Object.values(ALL)) if (!packNames.has(e.packId)) packNames.set(
 async function showStat() {
   const id = $('who').value;
   if (!id) return;
-  PROFILE = await api(`/api/profile/${encodeURIComponent(id)}`);
+  PROFILE = await store.loadProfile(id);
   OFF = { problems: [...(PROFILE.disabled?.problems || [])],
           packs: [...(PROFILE.disabled?.packs || [])] };
   if (WISHDATA) showWishes(WISHDATA);   // 아이를 바꾸면 소원권 목록도 따라간다
@@ -437,10 +437,9 @@ async function saveProgress(subject, unit) {
   $('msgProg').textContent = '저장 중…';
   try {
     // 아이가 지금 놀고 있을 수 있다. 방금 상태를 다시 받아 progress만 얹는다 (구현-현황 2.11).
-    const fresh = await api(`/api/profile/${encodeURIComponent(PROFILE.id)}`);
+    const fresh = await store.loadProfile(PROFILE.id);
     fresh.progress = { ...(fresh.progress || {}), [subject]: unit };
-    await fetch(`/api/profile/${encodeURIComponent(PROFILE.id)}`,
-                { method: 'PUT', body: JSON.stringify(fresh) });
+    await store.saveProfile(fresh);
     PROFILE = fresh;
     $('msgProg').textContent = `${subject} — ${unit}까지 열었습니다. 아이패드에서 새로고침하면 반영됩니다.`;
     showProgress();
@@ -545,10 +544,9 @@ function openPack(packId) {
 
     try {
       // 아이가 지금 놀고 있을 수 있다. 방금 상태를 다시 받아 disabled만 얹는다.
-      const fresh = await api(`/api/profile/${encodeURIComponent(PROFILE.id)}`);
+      const fresh = await store.loadProfile(PROFILE.id);
       fresh.disabled = { problems, packs };
-      await fetch(`/api/profile/${encodeURIComponent(PROFILE.id)}`,
-                  { method: 'PUT', body: JSON.stringify(fresh) });
+      await store.saveProfile(fresh);
       OFF = { problems, packs };
       PROFILE = fresh;
       dirty = false;
@@ -572,7 +570,7 @@ await showStat();
 /* ============ 문제 팩 목록 ============ */
 
 async function showPacks() {
-  const res = await api('/api/parent/packs', { headers: { 'X-Parent-Pin': $('pin').value } });
+  const res = await store.parentPacks($('pin').value);
   if (res.error) return $('packs').textContent = res.error;
   if (!res.packs.length) return $('packs').textContent = '아직 파일이 없습니다. 내장 구구단만 나옵니다.';
 
@@ -637,7 +635,7 @@ $('allowDay').innerHTML = DAYNAMES.map((d, i) => `<option value="${i}">${d}</opt
 let ALLOW = null;
 
 async function showAllowance() {
-  const boot = await api('/api/bootstrap');
+  const boot = await store.bootstrap();
   ALLOW = boot.settings?.allowance || { on: false, per: 100, won: 200, day: 6, max: 500 };
   $('allowOn').checked = !!ALLOW.on;
   $('allowPer').value = ALLOW.per;
@@ -665,10 +663,7 @@ $('saveAllow').onclick = async () => {
     day: Number($('allowDay').value),
     max: Math.max(100, Number($('allowMax').value) || 500),
   };
-  const res = await api('/api/parent/settings', {
-    method: 'PUT', headers: { 'X-Parent-Pin': $('pin').value },
-    body: JSON.stringify({ allowance })
-  });
+  const res = await store.saveSettings($('pin').value, { allowance });
   $('msgAllow').textContent = res.saved
     ? `저장했습니다. ${DAYNAMES[allowance.day]}요일마다 최대 ${(allowance.max / allowance.per * allowance.won).toLocaleString()}원.`
     : res.error;
@@ -676,10 +671,7 @@ $('saveAllow').onclick = async () => {
 showAllowance();
 
 $('saveSet').onclick = async () => {
-  const res = await api('/api/parent/settings', {
-    method: 'PUT', headers: { 'X-Parent-Pin': $('pin').value },
-    body: JSON.stringify({ defaultGoal: Number($('goal').value) })
-  });
+  const res = await store.saveSettings($('pin').value, { defaultGoal: Number($('goal').value) });
   $('msgSet').textContent = res.saved ? '저장했습니다.' : res.error;
 };
 
@@ -726,7 +718,7 @@ function download(name, text) {
 $('expBtn').onclick = async () => {
   if (!PROFILE) return $('msgExp').textContent = '먼저 위에서 아이를 골라주세요.';
   // 방금 상태를 다시 받는다. 아이가 지금 놀고 있을 수 있다.
-  const fresh = await api(`/api/profile/${encodeURIComponent(PROFILE.id)}`);
+  const fresh = await store.loadProfile(PROFILE.id);
   const text = JSON.stringify(fresh, null, 2);
   $('expText').value = text;
   download(`양이랑구구단-${fresh.id}-${stamp()}.json`, text);
@@ -767,8 +759,7 @@ function showImport() {
     $('impGo').disabled = true;
     try {
       const fixed = { ...data, id: PROFILE.id };   // 파일 이름과 id가 어긋나면 안 된다
-      await fetch(`/api/profile/${encodeURIComponent(PROFILE.id)}`,
-                  { method: 'PUT', body: JSON.stringify(fixed) });
+      await store.saveProfile(fixed);
       $('impPreview').innerHTML = '<p class="msg">되돌렸습니다. 아이패드에서 새로고침하면 반영됩니다.</p>';
       await showStat();
     } catch {
@@ -806,8 +797,8 @@ $('migrate').onclick = async () => {
     return $('msgMig').textContent = '예전 게임의 백업 글자가 아닌 것 같습니다.';
   if (!confirm(`${id}의 지금 기록을 덮어씁니다. 계속할까요?`)) return;
 
-  const p = await api(`/api/profile/${encodeURIComponent(id)}`);
-  await api(`/api/profile/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(fromV1(old, p)) });
+  const p = await store.loadProfile(id);
+  await store.saveProfile(fromV1(old, p));
   $('msgMig').textContent = `가져왔습니다. 풀 ${old.grass}, 아이템 ${(old.owned || []).length}개. 아이패드에서 새로고침하세요.`;
   showStat();
 };

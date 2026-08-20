@@ -1,6 +1,9 @@
 # 아이 진행 데이터 — 절대 올리지 않는다
 data/
 
+# 빌드 산출물 — sim/build-static.py가 만든다
+dist/
+
 # 임시 파일
 *.tmp
 __pycache__/

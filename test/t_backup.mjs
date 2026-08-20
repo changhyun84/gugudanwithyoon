@@ -76,7 +76,7 @@ ok('다른 아이 기록이면 경고한다', PARENT.includes('정말 되돌릴�
 ok('되돌릴 때 id를 지금 아이로 맞춘다 — 파일 이름과 어긋나면 안 된다',
   /\{ \.\.\.data, id: PROFILE\.id \}/.test(PARENT));
 ok('내보내기는 방금 상태를 다시 받는다 — 아이가 놀고 있을 수 있다',
-  /expBtn['"]\)\.onclick[\s\S]{0,300}await api\(`\/api\/profile\//.test(PARENT));
+  /expBtn['"]\)\.onclick[\s\S]{0,300}await store\.loadProfile\(/.test(PARENT));
 ok('아이 화면에는 되돌리기가 없다 (원칙 2.7)',
   !APP.includes('되돌리기') && !APP.includes('impGo'));
 

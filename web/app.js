@@ -1,5 +1,6 @@
 import { ALL_ITEMS, CHARACTERS, GRASS_ICON, ITEMS, STAR_ICON, charById, charSVG, itemById, slotOf, tierOf } from './characters.js';
 import { BACKGROUNDS, bgById, decoSVG, lookOf } from './backgrounds.js';
+import * as store from './store.js';
 import { TARGETS, factKey, buildIndex, packList, pruneLogs, seedFacts, makeQuestion, applyResult } from './engine.js';
 
 const BASE_REWARD = 3;    // 풀어보기만 해도
@@ -24,7 +25,6 @@ let pickSubject = null;   // 과목을 고른 뒤 단원 화면에 머무는 동
 
 const today = () => new Date().toLocaleDateString('sv-SE');   // 2026-08-16
 const esc = s => String(s).replace(/[<>&"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
-const api = (url, opt) => fetch(url, opt).then(r => r.json());
 const goal = () => P.daily.goal || 20;
 
 function toast(msg) {
@@ -39,12 +39,11 @@ function toast(msg) {
 
 async function save() {
   sinceSave = 0;
-  const body = JSON.stringify(P);
   try {
-    await fetch(`/api/profile/${encodeURIComponent(P.id)}`, { method: 'PUT', body });
+    await store.saveProfile(P);
     localStorage.removeItem(PENDING);
   } catch {
-    localStorage.setItem(PENDING, body);   // Wi-Fi가 끊겨도 진행이 날아가면 안 된다
+    localStorage.setItem(PENDING, JSON.stringify(P));   // Wi-Fi가 끊겨도 진행이 날아가면 안 된다
   }
 }
 
@@ -52,9 +51,7 @@ function saveSoon() {
   if (++sinceSave >= 5) save();
 }
 
-addEventListener('pagehide', () => {
-  if (P) navigator.sendBeacon(`/api/profile/${encodeURIComponent(P.id)}`, JSON.stringify(P));
-});
+addEventListener('pagehide', () => { if (P) store.saveOnExit(P); });
 addEventListener('visibilitychange', () => {
   if (P && document.visibilityState === 'hidden') save();
 });
@@ -74,7 +71,7 @@ function rollDay() {
 }
 
 async function enter(id) {
-  P = await api(`/api/profile/${encodeURIComponent(id)}`);
+  P = await store.loadProfile(id);
   localStorage.setItem(LAST_ID, id);
   P.disabled ||= { problems: [], packs: [] };
   P.progress ||= {};                                         // 과목마다 여기까지 열림 (기획서 16.3)
@@ -99,18 +96,19 @@ async function enter(id) {
 async function start() {
   const pending = localStorage.getItem(PENDING);
   if (pending) {
-    const stale = JSON.parse(pending);
-    await fetch(`/api/profile/${encodeURIComponent(stale.id)}`, { method: 'PUT', body: pending });
-    localStorage.removeItem(PENDING);
+    try {
+      await store.saveProfile(JSON.parse(pending));
+      localStorage.removeItem(PENDING);
+    } catch { /* 다음에 다시 밀어 올린다 */ }
   }
 
-  const boot = await api('/api/bootstrap');
+  const boot = await store.bootstrap();
   const { profiles, packs, messages, wishes } = boot;
   MESSAGES = messages || {};
   WISHES = wishes || [];
   ALLOW = boot.settings?.allowance || null;
-  const loaded = await Promise.all((packs || []).map(p => api(`/api/pack/${encodeURIComponent(p.id)}`)));
-  PACKS = loaded;
+  const loaded = await Promise.all((packs || []).map(p => store.loadPack(p.id)));
+  PACKS = loaded.filter(Boolean);
   INDEX = buildIndex(loaded);   // 프로필을 고르면 그 아이의 제외 목록으로 다시 짓는다
 
   const last = localStorage.getItem(LAST_ID);
@@ -135,7 +133,7 @@ function renderWho(profiles, last) {
   app.querySelector('#make').onclick = async () => {
     const id = app.querySelector('#nm').value.trim();
     if (!id) return toast('이름을 적어줘');
-    const made = await api('/api/profile', { method: 'POST', body: JSON.stringify({ id }) });
+    const made = await store.createProfile(id);
     made.error ? toast(made.error) : enter(id);
   };
 }
