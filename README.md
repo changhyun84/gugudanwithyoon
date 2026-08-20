@@ -15,6 +15,7 @@
 | 2 | `구현-현황.md` | **지금까지 만든 것과 설계서에서 바뀐 결정** |
 | 3 | `기술설계서.md` | 아키텍처, API, 스키마, 파일 포맷, 구현 순서 |
 | 4 | `문제-만들기-안내.md` | 부모가 문제를 등록하는 방법 (사용자 매뉴얼) |
+| 5 | `category_plan.md` | 과목·단원 구성과 지금 있는 문제 팩 |
 
 문서는 전부 `docs/` 안에 있습니다. 아래 두 개는 표에서 참조하지만 **아직 저장소에 없습니다** — `설치-실행-안내.md`, `깃허브-연결.md`.
 
@@ -37,7 +38,8 @@
 - Python 표준 라이브러리만 사용. 외부 패키지 없음
 - 데이터는 `data\profiles\*.json`. DB 없음. 원자적 저장 + 하루 1회 자동 백업(30일)
 - 문제는 `content\problems\*.csv|md`. 저장하면 새로고침만으로 반영
-- **폴더를 만들면 폴더 이름이 과목**, 파일명 앞의 `1-1`이 단원. 부모가 `/parent`에서 진도를 정함
+- **수학 9단원 · 한국사 8단원 (422문제).** 폴더 이름이 과목, 파일명 앞 `1-3`이 학기·단원
+- 부모가 `/parent`의 **학습 진도**에서 과목마다 "여기까지"를 정함. 처음엔 첫 단원만 열림
 - 캐릭터 5종(양·고양이·토끼·코알라·카피바라)은 별로 해금. **아이템은 앵커 + 배율로 공용**
 - 넷은 2026-08-19에 아기 비례로 다시 그렸습니다 (`구현-현황.md` 11장). **양은 손대지 마세요**
 - 부모는 `/parent`에서 최근 7일·어려워하는 문제를 보고, 문제를 **끌** 수 있음 (지우는 게 아님)
@@ -47,9 +49,9 @@
 server.py     HTTP + 프로필 저장
 packs.py      CSV/MD 파서
 web/          app.js · engine.js · characters.js · backgrounds.js · styles.css · index.html · parent.html
-content/      problems/*.csv|md · messages.csv · wishes.csv
+content/      problems/수학|한국사/*.csv · messages.csv · wishes.csv
 data/         자동 생성, git 제외
-sim/          60days.mjs  (보상 균형) · make-icons.py  (홈 화면 아이콘)
+sim/          60days.mjs (보상 균형) · make-icons.py (아이콘) · seed-math|history.py (문제 팩)
 test/         t_book · t_shop · t_wish · t_allow · t_units · t_backup  .mjs
 ```
 
@@ -90,7 +92,7 @@ node test/t_book.mjs       # 30개 — 도감. 판 보상이 줄어드는 경로
 node test/t_shop.mjs       # 31개 — 상점 단계·전용 아이템. 선반이 닫히는 경로가 없는지
 node test/t_wish.mjs       # 33개 — 배경·소원권. 받은 소원권이 사라지지 않는지
 node test/t_allow.mjs      # 24개 — 용돈. 화폐가 풀인지, 주 1회인지
-node test/t_units.mjs      # 59개 — 과목·단원·진도·자유 모드
+node test/t_units.mjs      # 68개 — 과목·단원·진도·자유 모드·문제 파일 검산
 node test/t_backup.mjs     # 34개 — 내보내기·되돌리기·PWA
 node sim/60days.mjs 180    # 보상 균형. 가격표를 characters.js·backgrounds.js에서 그대로 읽는다
 ```

@@ -113,13 +113,46 @@ ok('폴더 없이도 읽힌다', legacy.length === 2);
 ok('과목·단원 없이 항상 열린다', legacy.every(p => p.subject === null && p.unit === null));
 ok('문제가 그대로 실린다', legacy.every(p => p.count === 4));
 
+/* ── 저장소의 진짜 문제 파일 ── */
+group('저장소의 문제 파일 (수학 · 한국사)');
+
 const real = JSON.parse(execFileSync('python3', ['-c',
   `import json,packs,pathlib
-print(json.dumps([{'id':p['id'],'count':p['count'],'subject':p['subject']}
+print(json.dumps([{k: p[k] for k in ('id','name','subject','unit','order','count','warnings')}
                   for p in packs.scan(pathlib.Path('content/problems'))], ensure_ascii=False))`],
   { cwd: ROOT, encoding: 'utf8' }));
-ok('지금 저장소의 파일 3개가 그대로 읽힌다', real.length === 3 && real.every(p => p.count > 0));
-ok('지금 파일은 전부 과목 없음 (옮기지 않아도 된다)', real.every(p => p.subject === null));
+
+const bySub = s => real.filter(p => p.subject === s);
+ok('수학 9단원', bySub('수학').length === 9);
+ok('한국사 8단원', bySub('한국사').length === 8);
+ok('전부 단원 번호가 있다 — 진도 관리 대상이다',
+  real.every(p => p.subject && p.unit));
+ok('문제가 하나도 안 빠졌다 (경고 0)', real.every(p => !p.warnings.length));
+ok(`문제 ${real.reduce((s, p) => s + p.count, 0)}개`, real.reduce((s, p) => s + p.count, 0) > 400);
+ok('수학이 1-3부터 2-5까지 순서대로',
+  bySub('수학').map(p => p.unit).join(' ') === '1-3 1-4 1-5 1-6 2-1 2-2 2-3 2-4 2-5');
+ok('한국사가 1-1부터 2-3까지 순서대로',
+  bySub('한국사').map(p => p.unit).join(' ') === '1-1 1-2 1-3 1-4 1-5 2-1 2-2 2-3');
+
+/* 수학은 손으로 쓰지 않고 계산해서 만든다. 답이 틀리면 아이가 맞게 답하고 틀린 것이 된다. */
+const mathCheck = execFileSync('python3', ['-c', `
+import csv, pathlib, re
+bad = 0
+for f in pathlib.Path('content/problems/수학').glob('*.csv'):
+    for r in csv.DictReader(f.open(encoding='utf-8')):
+        q, a = r['문제'], r['정답']
+        for pat, fn in [
+            (r'(\\d+) × (\\d+)', lambda x, y: x * y),
+            (r'(\\d+) ÷ (\\d+)$', lambda x, y: x // y if x % y == 0 else None),
+            (r'(\\d+) ÷ (\\d+)의 몫', lambda x, y: x // y),
+            (r'(\\d+) ÷ (\\d+)의 나머지', lambda x, y: x % y),
+        ]:
+            m = re.fullmatch(pat, q)
+            if m:
+                want = fn(int(m.group(1)), int(m.group(2)))
+                if want is None or str(want) != a: bad += 1
+print(bad)`], { cwd: ROOT, encoding: 'utf8' }).trim();
+ok('수학 계산이 전부 맞다 (독립으로 다시 계산)', mathCheck === '0');
 
 /* ── 진도 (engine.js) ── */
 group('진도 — 과목마다 "여기까지"');
@@ -211,7 +244,14 @@ ok('packList에 과목·단원이 실린다',
   list.every(p => 'subject' in p && 'unit' in p));
 ok('안 열린 단원은 목록에 없다 — 회색으로도 안 보여준다(16.5)',
   !list.some(p => p.id === 'm10'));
-ok('열린 것만 있다', list.filter(p => p.subject).map(p => p.id).sort().join(',') === 'extra,h1,h2,m1,m2,m3');
+ok('열린 것만 있다',
+  list.filter(p => p.subject && p.id !== 'gugudan').map(p => p.id).sort().join(',') === 'extra,h1,h2,m1,m2,m3');
+ok('수학 폴더가 있으면 구구단도 수학에 들어간다',
+  list.find(p => p.id === 'gugudan')?.subject === E.GUGUDAN_SUBJECT);
+ok('구구단은 단원 번호가 없어 진도와 상관없이 늘 열린다',
+  list.find(p => p.id === 'gugudan')?.unit == null);
+ok('수학 폴더가 없으면 구구단은 과목 없이 남는다',
+  E.packList(E.buildIndex([pack('h9', '한국사', '1-1', 0)])).find(p => p.id === 'gugudan').subject === null);
 
 const drawn = (want, n = 200) => {
   const seen = new Set();

@@ -2,6 +2,7 @@
    내장 구구단(계산으로 만드는 문제)과 부모 팩(파일에서 읽은 문제)을 한 인덱스로 다룬다. */
 
 export const GUGUDAN = 'gugudan';
+export const GUGUDAN_SUBJECT = '수학';   // 이 이름의 폴더가 있으면 구구단이 그 과목에 들어간다
 
 /* 진짜 외워야 하는 15개 — 앞에서부터 3개씩 열린다 */
 export const TARGETS = [[3,3],[3,4],[3,6],[4,4],[3,7],[4,6],[3,8],[4,7],[6,6],[4,8],[6,7],[7,7],[6,8],[7,8],[8,8]];
@@ -75,17 +76,21 @@ export function buildIndex(packs = [], disabled = null, progress = null) {
   const open = openPacks(packs, progress);
   const index = {};
 
+  /* 내장 구구단은 수학 폴더가 있으면 그 과목 안에 들어간다 — 자유 모드에서 따로 떨어져 있으면
+     아이 눈에 이상하다. 단원 번호가 없으므로 진도와 상관없이 **늘 열려 있다**(openPacks). */
+  const guguSubject = packs.some(p => p.subject === GUGUDAN_SUBJECT) ? GUGUDAN_SUBJECT : null;
+
   if (!offP.has(GUGUDAN)) {
     TARGETS.forEach(([a, b], i) => {
       const key = factKey(a, b);
       if (offQ.has(key)) return;
-      index[key] = { packId: GUGUDAN, packName: '구구단', subject: null, unit: null, order: i,
+      index[key] = { packId: GUGUDAN, packName: '구구단', subject: guguSubject, unit: null, order: i,
                      mul: [a, b], gated: true, rewardable: true, start: 0 };
     });
     EASY.forEach(([a, b], i) => {
       const key = factKey(a, b);
       if (offQ.has(key)) return;
-      index[key] = { packId: GUGUDAN, packName: '구구단', subject: null, unit: null, order: 100 + i,
+      index[key] = { packId: GUGUDAN, packName: '구구단', subject: guguSubject, unit: null, order: 100 + i,
                      mul: [a, b], gated: false, rewardable: false, start: 2 };
     });
   }

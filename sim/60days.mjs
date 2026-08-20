@@ -15,18 +15,21 @@ import { join } from 'node:path';
 /* engine.js를 그대로 쓴다. node가 .js를 CJS로 읽으므로 확장자만 바꿔 임시 폴더에 둔다. */
 const tmp = mkdtempSync(join(tmpdir(), 'gugudan-sim-'));
 writeFileSync(join(tmp, 'engine.mjs'), readFileSync(new URL('../web/engine.js', import.meta.url)));
-const { buildIndex, seedFacts, makeQuestion, applyResult } =
+const { buildIndex, buildIndexAll, seedFacts, makeQuestion, applyResult } =
   await import('file://' + join(tmp, 'engine.mjs'));
 
 /* content/problems를 packs.py로 읽는다 — 게임과 똑같은 파서를 써야 의미가 있다 */
 const PACKS = JSON.parse(execFileSync('python3', ['-c', `
 import packs, json, pathlib
 ps = packs.scan(pathlib.Path('content/problems'))
-print(json.dumps([{'id':p['id'],'name':p['name'],'problems':p['problems']}
+print(json.dumps([{k: p[k] for k in ('id','name','subject','unit','order','problems')}
                   for p in ps if p['count']], ensure_ascii=False))`],
   { cwd: new URL('..', import.meta.url).pathname, encoding: 'utf8' }));
 
-const DAYS = Number(process.argv[2] || 60);
+const DAYS = Number(process.argv.find(a => /^\d+$/.test(a)) || 60);
+/* --all: 부모가 모든 단원을 다 열어준 상태. 진도를 안 정하면 과목마다 첫 단원만 열린다. */
+const ALL_UNITS = process.argv.includes('--all');
+const index0 = () => ALL_UNITS ? buildIndexAll(PACKS) : buildIndex(PACKS);
 const GOAL = 20;
 
 /* 마스터리별 정답률·힌트 사용률 — 모르는 것일수록 힌트를 더 쓴다 */
@@ -48,7 +51,7 @@ const WISH_COST = 12;      // content/wishes.csv 평균
 const ALLOW_PER_WEEK = 500;   // 용돈 상한 (data/settings.json 기본값). 주 1회
 
 function simulate({ story = false, wishes = true, allowance = true, days = DAYS } = {}) {
-  const index = buildIndex(PACKS);
+  const index = index0();
   const facts = {};
   seedFacts(index, facts);
 
@@ -116,8 +119,8 @@ function simulate({ story = false, wishes = true, allowance = true, days = DAYS 
   return { rows, dryDay, mastered, wishCount, allowWon };
 }
 
-const total = Object.values(buildIndex(PACKS)).filter(e => e.rewardable).length;
-console.log(`별을 주는 문제 ${total}개 (쉬운 구구단 24개는 제외 — 구현-현황 2.1)`);
+const total = Object.values(index0()).filter(e => e.rewardable).length;
+console.log(`${ALL_UNITS ? '[모든 단원 열림] ' : '[진도 기본값 — 과목마다 첫 단원만] '}별을 주는 문제 ${total}개 (쉬운 구구단 24개는 제외 — 구현-현황 2.1)`);
 console.log(`아이템 ${ALL_ITEMS.length}종 · 총액 ${ALL_ITEMS.reduce((s, i) => s + i.price, 0)}풀`);
 TIER_NEED.forEach((need, i) => {
   if (need > total) console.log(`  ⚠ 상점 ${i + 1}단계 조건 ${need}문제 마스터는 **도달 불가**`);
