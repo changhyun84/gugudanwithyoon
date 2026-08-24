@@ -81,7 +81,16 @@ group('살 수 있는 것');
 
 P = profile(0, 1, ['sheep']);
 ok('1단계에는 tier 1만', C.ALL_ITEMS.filter(shop.buyable).every(i => (i.tier || 1) === 1));
-ok('1단계 공용 6종', C.ALL_ITEMS.filter(shop.buyable).length === 6);
+
+/* 첫 선반이 얇으면 아이는 이틀 만에 다 사고 살 게 없어집니다 — 실제로 그랬습니다(구현-현황 26장).
+   v1은 13종이 처음부터 다 보였습니다. 그 아래로 내려가지 않게 못을 박습니다. */
+const shelf1 = C.ALL_ITEMS.filter(shop.buyable);
+ok(`1단계 ${shelf1.length}종 — v1의 13종 이상`, shelf1.length >= 13);
+ok('1단계에 세 슬롯이 다 있다', new Set(shelf1.map(i => C.slotOf(i.id))).size === 3);
+
+/* 선반은 단계마다 넓어져야 합니다. 어느 단계에서 0개가 늘면 그 단계는 보상이 아닙니다 */
+const shelfAt = t => C.ALL_ITEMS.filter(i => !i.only && (i.tier || 1) <= t).length;
+ok('단계마다 공용이 늘어난다', [1, 2, 3, 4].every(t => shelfAt(t + 1) > shelfAt(t)));
 
 P = profile(65, 5, ['sheep']);
 ok('양만 있으면 남의 전용은 안 보임',
@@ -125,6 +134,24 @@ ok('전용 15종', C.ALL_ITEMS.filter(i => i.only).length === 15);
 
 const total = C.ALL_ITEMS.reduce((s, i) => s + i.price, 0);
 ok(`총액 ${total}풀 — 60일 수입(약 6,000)보다 많음`, total > 6000);
+ok(`${C.ALL_ITEMS.length}종`, C.ALL_ITEMS.length === 48);
+
+/* 값과 단계는 **내리는 것만** 안전합니다 (원칙 2.1). 올리면 어제 살 수 있던 게 오늘 사라집니다.
+   이미 나간 아이템의 값·단계를 여기 박아둡니다. 이 표를 고쳐야 통과한다면, 고치기 전에 왜인지 보세요. */
+const SHIPPED = {
+  leaf: [60, 1], straw: [90, 1], ribbon: [120, 1], beanie: [170, 2], party: [220, 2],
+  star: [300, 2], crown: [450, 2], sred: [70, 1], sblue: [70, 1], syel: [110, 1],
+  bow: [160, 2], bell: [230, 2], rain: [380, 2], pballoon: [180, 2], pbook: [260, 2],
+  hflower: [220, 3], hmoon: [250, 3], hrbow: [280, 3], hleaf: [310, 3], horange: [340, 3],
+  nknit: [360, 4], nfish: [400, 4], ncarrot: [430, 4], neuca: [460, 4], ntowel: [500, 4],
+  pbell: [520, 5], pwand: [570, 5], pclover: [600, 5], pbranch: [640, 5], pduck: [700, 5],
+};
+const raised = Object.entries(SHIPPED).filter(([id, [pr, ti]]) => {
+  const it = C.itemById(id);
+  return !it || it.price > pr || (it.tier || 1) > ti;
+});
+ok('나간 아이템의 값·단계가 오르지 않음', !raised.length);
+if (raised.length) console.log('     올랐거나 사라짐:', raised.map(([id]) => id).join(', '));
 
 /* ── 앵커 ── */
 group('앵커');

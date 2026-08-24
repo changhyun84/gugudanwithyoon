@@ -18,13 +18,20 @@ export const STAR_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" aria-h
    단계 조건도 내리는 것만 안전합니다 — 올리면 이미 열린 선반이 닫힙니다. */
 
 export const HATS = [
-  { id: 'leaf',   nm: '나뭇잎',   price: 60 },
-  { id: 'straw',  nm: '밀짚모자', price: 90 },
-  { id: 'ribbon', nm: '분홍리본', price: 120 },
-  { id: 'beanie', nm: '털모자',   price: 170, tier: 2 },
-  { id: 'party',  nm: '파티고깔', price: 220, tier: 2 },
-  { id: 'star',   nm: '별모자',   price: 300, tier: 2 },
-  { id: 'crown',  nm: '왕관',     price: 450, tier: 2 },
+  { id: 'leaf',    nm: '나뭇잎',     price: 60 },
+  { id: 'straw',   nm: '밀짚모자',   price: 90 },
+  { id: 'ribbon',  nm: '분홍리본',   price: 120 },
+  { id: 'bandana', nm: '물방울 두건', price: 70 },
+  { id: 'acorn',   nm: '도토리 모자', price: 100 },
+  { id: 'beanie',  nm: '털모자',     price: 170, tier: 2 },
+  { id: 'party',   nm: '파티고깔',   price: 220, tier: 2 },
+  { id: 'star',    nm: '별모자',     price: 300, tier: 2 },
+  { id: 'crown',   nm: '왕관',       price: 450, tier: 2 },
+  { id: 'chef',    nm: '요리사 모자', price: 200, tier: 2 },
+  { id: 'goggle',  nm: '물안경',     price: 240, tier: 2 },
+  { id: 'wizard',  nm: '마법사 모자', price: 380, tier: 3 },
+  { id: 'hphone',  nm: '헤드폰',     price: 480, tier: 4 },
+  { id: 'hrainbow', nm: '무지개 머리띠', price: 600, tier: 5 },
   { id: 'hflower', nm: '꽃 화관',    price: 220, tier: 3, only: 'sheep' },
   { id: 'hmoon',   nm: '달 모자',    price: 250, tier: 3, only: 'cat' },
   { id: 'hrbow',   nm: '귀 리본',    price: 280, tier: 3, only: 'rabbit' },
@@ -33,12 +40,17 @@ export const HATS = [
 ];
 
 export const SCARVES = [
-  { id: 'sred',  nm: '빨간 목도리',   price: 70 },
-  { id: 'sblue', nm: '파란 목도리',   price: 70 },
-  { id: 'syel',  nm: '노란 목도리',   price: 110 },
-  { id: 'bow',   nm: '나비넥타이',    price: 160, tier: 2 },
-  { id: 'bell',  nm: '방울목걸이',    price: 230, tier: 2 },
-  { id: 'rain',  nm: '무지개 목도리', price: 380, tier: 2 },
+  { id: 'sred',    nm: '빨간 목도리',   price: 70 },
+  { id: 'sblue',   nm: '파란 목도리',   price: 70 },
+  { id: 'syel',    nm: '노란 목도리',   price: 110 },
+  { id: 'sgreen',  nm: '초록 목도리',   price: 70 },
+  { id: 'sdot',    nm: '물방울 목도리', price: 130 },
+  { id: 'bow',     nm: '나비넥타이',    price: 160, tier: 2 },
+  { id: 'bell',    nm: '방울목걸이',    price: 230, tier: 2 },
+  { id: 'rain',    nm: '무지개 목도리', price: 380, tier: 2 },
+  { id: 'slei',    nm: '꽃 목걸이',     price: 200, tier: 2 },
+  { id: 'pearl',   nm: '진주 목걸이',   price: 340, tier: 2 },
+  { id: 'ncape',   nm: '빨간 망토',     price: 420, tier: 3 },
   { id: 'nknit',   nm: '뜨개 목도리',     price: 360, tier: 4, only: 'sheep' },
   { id: 'nfish',   nm: '생선 목걸이',     price: 400, tier: 4, only: 'cat' },
   { id: 'ncarrot', nm: '당근 목걸이',     price: 430, tier: 4, only: 'rabbit' },
@@ -48,8 +60,14 @@ export const SCARVES = [
 
 /* 소품 — 5B에서 새로 연 슬롯. equipped.prop에 들어간다 */
 export const PROPS = [
-  { id: 'pballoon', nm: '풍선',       price: 180, tier: 2 },
-  { id: 'pbook',    nm: '그림책',     price: 260, tier: 2 },
+  { id: 'pflower',   nm: '들꽃 다발',   price: 90 },
+  { id: 'pballoon',  nm: '풍선',       price: 180 },
+  { id: 'pbook',     nm: '그림책',     price: 260 },
+  { id: 'pcup',      nm: '코코아',     price: 220, tier: 2 },
+  { id: 'pumbrella', nm: '우산',       price: 240, tier: 2 },
+  { id: 'pcamera',   nm: '사진기',     price: 380, tier: 3 },
+  { id: 'pguitar',   nm: '작은 기타',   price: 520, tier: 4 },
+  { id: 'pcake',     nm: '생일 케이크', price: 680, tier: 5 },
   { id: 'pbell',    nm: '작은 종',     price: 520, tier: 5, only: 'sheep' },
   { id: 'pwand',    nm: '요술 지팡이', price: 570, tier: 5, only: 'cat' },
   { id: 'pclover',  nm: '네잎클로버',  price: 600, tier: 5, only: 'rabbit' },
@@ -121,6 +139,55 @@ function hatSVG(id) {
       '<circle cx="92" cy="24" r="2.6" fill="#EFC047"/><circle cx="108" cy="33" r="2.6" fill="#EFC047"/>' +
       '<polygon points="100,-22 103.5,-13.5 112,-13.5 105,-8 108,0 100,-5 92,0 95,-8 88,-13.5 96.5,-13.5" fill="#EFC047" stroke="#CE9C22" stroke-width="1.6" stroke-linejoin="round"/>';
 
+
+    case 'bandana':   // 물방울 두건 — 머리를 덮고 옆에 매듭
+      return '<path d="M72 37 Q76 12 100 12 Q124 12 128 37 Z" fill="#E8709A" stroke="#CB5480" stroke-width="2.5" stroke-linejoin="round"/>' +
+        '<path d="M128 33 l16 -7 l-3 14 z" fill="#E8709A" stroke="#CB5480" stroke-width="2" stroke-linejoin="round"/>' +
+        '<circle cx="130" cy="34" r="5" fill="#EF89AC" stroke="#CB5480" stroke-width="2"/>' +
+        [[87, 25], [100, 19], [113, 25], [93, 33], [107, 33]]
+          .map(([x, y]) => `<circle cx="${x}" cy="${y}" r="3.2" fill="#FBF7EE"/>`).join('');
+
+    case 'acorn':     // 도토리 모자 — 깍정이에 꼭지
+      return '<rect x="97" y="2" width="6" height="11" rx="3" fill="#7A5A2A"/>' +
+        '<path d="M75 34 A25 24 0 0 1 125 34 Z" fill="#B98A5A" stroke="#96683E" stroke-width="2.5" stroke-linejoin="round"/>' +
+        '<path d="M84 30 v-12 M100 27 v-14 M116 30 v-12" stroke="#96683E" stroke-width="2" stroke-linecap="round" fill="none"/>' +
+        '<ellipse cx="100" cy="34" rx="26" ry="6" fill="#CE9B70" stroke="#96683E" stroke-width="2.5"/>';
+
+    case 'chef':      // 요리사 모자 — 부푼 것 셋에 띠 하나
+      return '<circle cx="82" cy="18" r="15" fill="#FBF7EE" stroke="#E0D8C6" stroke-width="2"/>' +
+        '<circle cx="118" cy="18" r="15" fill="#FBF7EE" stroke="#E0D8C6" stroke-width="2"/>' +
+        '<circle cx="100" cy="9" r="17" fill="#FBF7EE" stroke="#E0D8C6" stroke-width="2"/>' +
+        '<rect x="74" y="24" width="52" height="16" rx="7" fill="#FBF7EE" stroke="#E0D8C6" stroke-width="2.5"/>' +
+        '<path d="M86 32 h28" stroke="#E0D8C6" stroke-width="2" stroke-linecap="round"/>';
+
+    case 'goggle':    // 물안경 — 이마 위에 올려둔 모양
+      return '<path d="M66 32 q34 -15 68 0" fill="none" stroke="#4A5B9E" stroke-width="6.5" stroke-linecap="round"/>' +
+        '<rect x="70" y="20" width="28" height="24" rx="11" fill="#9FC6E8" stroke="#4A5B9E" stroke-width="3"/>' +
+        '<rect x="102" y="20" width="28" height="24" rx="11" fill="#9FC6E8" stroke="#4A5B9E" stroke-width="3"/>' +
+        '<rect x="95" y="29" width="10" height="6" rx="3" fill="#4A5B9E"/>' +
+        '<path d="M76 27 q4 -4 9 -2 M108 27 q4 -4 9 -2" stroke="#E9F2EA" stroke-width="3" stroke-linecap="round" fill="none"/>';
+
+    case 'wizard':    // 마법사 모자 — 끝이 살짝 휜 고깔
+      return '<ellipse cx="100" cy="40" rx="46" ry="10" fill="#7A5CB5" stroke="#54398A" stroke-width="2.5"/>' +
+        '<path d="M78 40 Q84 -2 116 -22 Q112 10 122 40 Z" fill="#6A4FA3" stroke="#54398A" stroke-width="2.5" stroke-linejoin="round"/>' +
+        '<path d="M78 34 Q100 44 122 34 L122 41 Q100 51 78 41 Z" fill="#EFC047" stroke="#CE9C22" stroke-width="2"/>' +
+        [[97, 20, 4], [107, 4, 3], [92, 6, 2.4]]
+          .map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}" fill="#F6D46A"/>`).join('');
+
+    case 'hphone':    // 헤드폰
+      return '<path d="M68 40 A33 34 0 0 1 132 40" fill="none" stroke="#E8615D" stroke-width="8" stroke-linecap="round"/>' +
+        '<rect x="55" y="28" width="19" height="28" rx="9.5" fill="#D9534F" stroke="#B8413E" stroke-width="2.5"/>' +
+        '<rect x="126" y="28" width="19" height="28" rx="9.5" fill="#D9534F" stroke="#B8413E" stroke-width="2.5"/>' +
+        '<rect x="60" y="34" width="9" height="16" rx="4.5" fill="#F6C0BE"/>' +
+        '<rect x="131" y="34" width="9" height="16" rx="4.5" fill="#F6C0BE"/>';
+
+    case 'hrainbow':  // 무지개 머리띠 — 양 끝에 구름
+      return ['#E8615D', '#EFA13C', '#EFC047', '#7FB456', '#5A8FC4', '#9B79C4']
+          .map((c, i) => { const r = 36 - i * 4.6;
+            return `<path d="M${100 - r} 42 A${r} ${r} 0 0 1 ${100 + r} 42" fill="none" stroke="${c}" stroke-width="4.8"/>`; }).join('') +
+        '<ellipse cx="64" cy="43" rx="13" ry="9" fill="#FBF7EE" stroke="#E0D8C6" stroke-width="2"/>' +
+        '<ellipse cx="136" cy="43" rx="13" ry="9" fill="#FBF7EE" stroke="#E0D8C6" stroke-width="2"/>';
+
     /* ── 캐릭터 전용 (3단계) ──
        한 캐릭터에만 붙으므로, 그 캐릭터의 앵커·배율을 거친 뒤 제자리에 오도록 좌표를 잡았다.
        다른 캐릭터에 씌워보면 어긋난다 — 그게 전용인 이유다. */
@@ -185,6 +252,36 @@ function scarfSVG(id) {
       '<path d="M92 112 h16" stroke="#CE9C22" stroke-width="2.2" fill="none"/>' +
       '<circle cx="100" cy="116" r="2" fill="#CE9C22"/>';
 
+
+    case 'sgreen': return plain('#7FB456', '#5F9040');
+    case 'sdot':
+      return plain('#5A8FC4', '#4472A0') +
+        [[82, 99], [100, 103], [118, 99], [91, 110], [109, 110], [114, 124]]
+          .map(([x, y]) => `<circle cx="${x}" cy="${y}" r="3.4" fill="#FBF7EE"/>`).join('');
+
+    case 'slei':      // 꽃 목걸이
+      return '<path d="M72 92 Q100 110 128 92" fill="none" stroke="#7FB456" stroke-width="3.5" stroke-linecap="round"/>' +
+        [[76, 95, '#F2A2BE'], [88, 103, '#FBEAA0'], [100, 106, '#F2A2BE'],
+         [112, 103, '#FBEAA0'], [124, 95, '#F2A2BE']]
+          .map(([x, y, f]) => `<circle cx="${x}" cy="${y}" r="7" fill="${f}" stroke="#D9799C" stroke-width="1.6"/>` +
+                              `<circle cx="${x}" cy="${y}" r="2.4" fill="#F6D46A"/>`).join('');
+
+    case 'pearl':     // 진주 목걸이 — 알을 곡선 위에 늘어놓는다
+      return '<path d="M72 92 Q100 110 128 92" fill="none" stroke="#DED6C4" stroke-width="2"/>' +
+        Array.from({ length: 9 }, (_, i) => {
+          const t = i / 8, x = 72 + 56 * t, y = (1 - t) * (1 - t) * 92 + 2 * (1 - t) * t * 110 + t * t * 92;
+          return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4.6" fill="#FBF7EE" stroke="#DED6C4" stroke-width="1.4"/>` +
+                 `<circle cx="${(x - 1.4).toFixed(1)}" cy="${(y - 1.6).toFixed(1)}" r="1.4" fill="#fff"/>`;
+        }).join('') +
+        '<circle cx="100" cy="115" r="7.5" fill="#F2AFBD" stroke="#D9799C" stroke-width="1.8"/>' +
+        '<circle cx="97.6" cy="112.4" r="2.2" fill="#fff" opacity=".85"/>';
+
+    case 'ncape':     // 빨간 망토 — 어깨에 두르고 금색 여밈
+      return '<path d="M66 94 Q100 112 134 94 L142 138 Q100 154 58 138 Z" fill="#E8615D" stroke="#C24A46" stroke-width="2.5" stroke-linejoin="round"/>' +
+        '<path d="M84 100 l-6 38 M116 100 l6 38" stroke="#C24A46" stroke-width="2" fill="none" opacity=".7"/>' +
+        '<path d="M70 90 Q100 105 130 90 L130 100 Q100 115 70 100 Z" fill="#EFC047" stroke="#CE9C22" stroke-width="2"/>' +
+        '<circle cx="100" cy="105" r="5.5" fill="#F6D46A" stroke="#CE9C22" stroke-width="2"/>';
+
     /* ── 캐릭터 전용 (4단계) ── */
 
     case 'nknit':     // 양 — 뜨개 목도리
@@ -236,6 +333,58 @@ function propSVG(id) {
         '<rect x="127" y="130" width="42" height="36" rx="4" fill="#5A8FC4" stroke="#42709F" stroke-width="2.5"/>' +
         '<rect x="132" y="135" width="32" height="26" rx="2" fill="#FBF7EE" stroke="#DED6C4" stroke-width="1.6"/>' +
         '<path d="M137 143 h22 M137 149 h22 M137 155 h14" stroke="#C3D3C6" stroke-width="2" stroke-linecap="round"/></g>';
+
+
+    case 'pflower':   // 들꽃 다발
+      return '<path d="M140 172 l18 0 l-5 -15 l-8 0 z" fill="#E9F2EA" stroke="#C3D3C6" stroke-width="2" stroke-linejoin="round"/>' +
+        '<path d="M148 160 q-8 -10 -10 -20 M148 160 q8 -10 11 -19 M148 160 v-22" fill="none" stroke="#5F9040" stroke-width="2.6" stroke-linecap="round"/>' +
+        '<ellipse cx="136" cy="152" rx="7" ry="4.4" fill="#8CBF63" stroke="#5F9040" stroke-width="1.6" transform="rotate(-30 136 152)"/>' +
+        [[137, 137, '#F2A2BE'], [160, 139, '#9B79C4'], [148, 127, '#FBEAA0']]
+          .map(([x, y, f]) => `<circle cx="${x}" cy="${y}" r="8.5" fill="${f}" stroke="#D9799C" stroke-width="1.8"/>` +
+                              `<circle cx="${x}" cy="${y}" r="3" fill="#F6D46A"/>`).join('');
+
+    case 'pcup':      // 코코아 — 김이 오른다
+      return '<ellipse cx="148" cy="171" rx="26" ry="7" fill="#E9F2EA" stroke="#C3D3C6" stroke-width="2"/>' +
+        '<path d="M164 145 q13 4 0 17" fill="none" stroke="#DED6C4" stroke-width="4.5" stroke-linecap="round"/>' +
+        '<path d="M129 137 h38 l-4 26 a15 8 0 0 1 -30 0 z" fill="#FBF7EE" stroke="#DED6C4" stroke-width="2.5" stroke-linejoin="round"/>' +
+        '<ellipse cx="148" cy="138" rx="17.5" ry="5" fill="#8D6E4F"/>' +
+        '<ellipse cx="143" cy="137" rx="4" ry="2.2" fill="#FBF7EE" opacity=".8"/>' +
+        '<path d="M140 128 q5 -5 0 -11 M156 128 q5 -5 0 -11" fill="none" stroke="#DED6C4" stroke-width="2.6" stroke-linecap="round"/>';
+
+    case 'pumbrella': // 우산
+      return '<path d="M148 124 v40 q0 9 -9 9 q-9 0 -9 -8" fill="none" stroke="#8D6E4F" stroke-width="4" stroke-linecap="round"/>' +
+        '<path d="M114 128 q4 -28 34 -28 q30 0 34 28 q-8.5 -8 -17 0 q-8.5 -8 -17 0 q-8.5 -8 -17 0 q-8.5 -8 -17 0 z" ' +
+        'fill="#E8615D" stroke="#C24A46" stroke-width="2.5" stroke-linejoin="round"/>' +
+        '<path d="M131 122 q4 -22 17 -22 q13 0 17 22 q-8.5 -6 -17 0 q-8.5 -6 -17 0 z" fill="#FBF7EE" opacity=".85"/>' +
+        '<circle cx="148" cy="98" r="3.4" fill="#8D6E4F"/>';
+
+    case 'pcamera':   // 사진기
+      return '<rect x="134" y="123" width="19" height="10" rx="3" fill="#4A5B9E"/>' +
+        '<rect x="121" y="131" width="54" height="38" rx="8" fill="#5C6FB0" stroke="#3F4F87" stroke-width="2.5"/>' +
+        '<circle cx="148" cy="150" r="14" fill="#9FC6E8" stroke="#3F4F87" stroke-width="2.5"/>' +
+        '<circle cx="148" cy="150" r="6.5" fill="#3F4F87"/>' +
+        '<circle cx="143.5" cy="145.5" r="2.8" fill="#fff"/>' +
+        '<circle cx="167" cy="139" r="4" fill="#F6D46A" stroke="#CE9C22" stroke-width="1.6"/>';
+
+    case 'pguitar':   // 작은 기타
+      return '<rect x="143" y="100" width="10" height="24" fill="#8D6E4F"/>' +
+        '<rect x="139" y="92" width="18" height="11" rx="3.5" fill="#7A5A2A"/>' +
+        '<circle cx="143" cy="96" r="2" fill="#EFC047"/><circle cx="153" cy="96" r="2" fill="#EFC047"/>' +
+        '<path d="M148 176 c-15 0 -22 -11 -22 -19 c0 -7 5 -10 5 -15 c0 -6 -5 -8 -5 -14 c0 -8 8 -13 22 -13 ' +
+        'c14 0 22 5 22 13 c0 6 -5 8 -5 14 c0 5 5 8 5 15 c0 8 -7 19 -22 19 z" ' +
+        'fill="#E0B45C" stroke="#C08F3C" stroke-width="2.5" stroke-linejoin="round"/>' +
+        '<circle cx="148" cy="152" r="7.5" fill="#8D6E4F"/>' +
+        '<rect x="138" y="164" width="20" height="5" rx="2" fill="#8D6E4F"/>';
+
+    case 'pcake':     // 생일 케이크
+      return '<ellipse cx="148" cy="174" rx="31" ry="8" fill="#E9F2EA" stroke="#C3D3C6" stroke-width="2"/>' +
+        '<path d="M124 143 h48 v22 a24 9 0 0 1 -48 0 z" fill="#F6D0DE" stroke="#DFA9BE" stroke-width="2.5"/>' +
+        '<ellipse cx="148" cy="143" rx="24" ry="9" fill="#FBF7EE" stroke="#DFA9BE" stroke-width="2.5"/>' +
+        '<path d="M124 150 q6 7 12 0 q6 7 12 0 q6 7 12 0 q6 7 12 0" fill="none" stroke="#FBF7EE" stroke-width="4" stroke-linecap="round"/>' +
+        [[136, 126], [148, 122], [160, 126]]
+          .map(([x, y]) => `<rect x="${x - 2.4}" y="${y}" width="4.8" height="15" rx="2.2" fill="#7FB456"/>` +
+                           `<path d="M${x} ${y - 8} q5 5 0 8 q-5 -3 0 -8 z" fill="#F6D46A" stroke="#EFA13C" stroke-width="1.4"/>`).join('') +
+        '<circle cx="148" cy="141" r="4.5" fill="#E8615D"/>';
 
     /* ── 캐릭터 전용 (5단계) ── */
 
