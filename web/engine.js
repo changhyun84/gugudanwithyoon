@@ -44,14 +44,36 @@ function natCmp(a, b) {
 
 const EVERY = Symbol('모든 단원');
 
-/* 지금 열려 있는 팩 id들.
-   - 과목이나 단원 번호가 없으면 진도 관리 대상이 아니라 늘 열려 있다
-   - 부모가 진도를 안 정했으면 **첫 단원만**. 파일을 넣자마자 다 열리면
-     아직 학교에서 안 배운 문제가 아이에게 나간다 */
-export function openPacks(packs = [], progress = null) {
-  if (progress === EVERY) return new Set(packs.map(p => p.id));
+/* 심화 문제를 기본 뒤로 미는 폭. 한 단원에 기본이 이만큼 있을 리 없는 값이면 된다. */
+const DEEP_OFFSET = 10000;
 
-  const open = new Set();
+/* 지금 열려 있는 팩 id들.
+
+   `progress`는 두 가지 모양을 받는다.
+     { units: ['1-3-나눗셈', 'gugudan'] }   ← 지금 방식. 부모가 고른 단원만 열린다
+     { 수학: '1-4' }                        ← 예전 방식. "여기까지" 한 줄로 끊었다
+
+   예전 방식을 남겨둔 이유는 **이미 저장된 프로필 때문**이다. 지우면 부모가 정해둔 진도가
+   사라지고 아이 화면이 갑자기 첫 단원으로 되돌아간다. 부모 화면이 한 번 저장하면
+   자동으로 새 방식으로 바뀐다(migrateProgress).
+
+   과목이나 단원 번호가 없는 팩(폴더 밖 파일)은 진도 관리 대상이 아니라 늘 열려 있다.
+   내장 구구단(id: gugudan)은 단원 번호가 없지만 **부모가 끌 수 있어야 해서** 예외로 다룬다. */
+export function openPacks(packs = [], progress = null) {
+  if (progress === EVERY) return new Set([GUGUDAN, ...packs.map(p => p.id)]);
+
+  if (Array.isArray(progress?.units)) {
+    const want = new Set(progress.units);
+    const open = new Set();
+    for (const p of packs) {
+      if (!p.subject || !p.unit) open.add(p.id);      // 진도 관리 대상이 아님
+      else if (want.has(p.id)) open.add(p.id);
+    }
+    if (want.has(GUGUDAN)) open.add(GUGUDAN);
+    return open;
+  }
+
+  const open = new Set([GUGUDAN]);                     // 예전 방식에서는 구구단이 늘 열려 있었다
   const bySubject = {};
   for (const p of packs) {
     if (!p.subject || !p.unit) { open.add(p.id); continue; }
@@ -67,6 +89,13 @@ export function openPacks(packs = [], progress = null) {
   return open;
 }
 
+/* 예전 진도("여기까지")를 지금 방식(고른 단원만)으로 바꾼다.
+   **열려 있던 것은 하나도 닫지 않는다** — 부모 화면이 저장할 때 한 번 부른다. */
+export function migrateProgress(packs = [], progress = null) {
+  if (Array.isArray(progress?.units)) return progress;
+  return { units: [...openPacks(packs, progress)] };
+}
+
 /* 문제 하나의 정의:
    packId, order, gated(앞 3개 규칙 적용), rewardable(마스터 시 별), start(처음 마스터리)
    mul이 있으면 계산으로 만들고, 없으면 파일에서 온 고정 문제다. */
@@ -80,7 +109,7 @@ export function buildIndex(packs = [], disabled = null, progress = null) {
      아이 눈에 이상하다. 단원 번호가 없으므로 진도와 상관없이 **늘 열려 있다**(openPacks). */
   const guguSubject = packs.some(p => p.subject === GUGUDAN_SUBJECT) ? GUGUDAN_SUBJECT : null;
 
-  if (!offP.has(GUGUDAN)) {
+  if (!offP.has(GUGUDAN) && open.has(GUGUDAN)) {
     TARGETS.forEach(([a, b], i) => {
       const key = factKey(a, b);
       if (offQ.has(key)) return;
@@ -95,12 +124,19 @@ export function buildIndex(packs = [], disabled = null, progress = null) {
     });
   }
 
+  // 부모가 심화를 껐으면 심화 문제는 아예 색인에 안 들어간다. 기본만 남는다.
+  const noDeep = progress?.deep === false;
+
   packs.forEach(pack => {
     if (offP.has(pack.id) || !open.has(pack.id)) return;
     pack.problems.forEach(q => {
       if (offQ.has(q.key)) return;
+      if (noDeep && q.deep) return;
+      /* 심화는 그 팩의 기본을 다 지나간 뒤에 열린다. 순서만 뒤로 밀면
+         NEW_AT_ONCE가 이미 하고 있는 일이 그대로 적용된다 — 규칙을 새로 만들지 않는다. */
       index[q.key] = { packId: pack.id, packName: pack.name,
-                       subject: pack.subject || null, unit: pack.unit || null, order: q.order,
+                       subject: pack.subject || null, unit: pack.unit || null,
+                       order: q.order + (q.deep ? DEEP_OFFSET : 0), deep: !!q.deep,
                        prompt: q.prompt, answer: q.answer, choices: q.choices, hint: q.hint,
                        gated: true, rewardable: true, start: 0 };
     });
@@ -133,10 +169,15 @@ export function seedFacts(index, facts) {
   }
 }
 
-/* 한 번에 새로 배우는 것은 팩마다 3개.
-   다만 출제 후보가 이만큼도 안 되면 같은 문제가 반복되므로 다음 문제를 미리 연다. */
-const NEW_AT_ONCE = 3;
-const MIN_POOL = 8;
+/* 한 번에 새로 배우는 것은 팩마다 5개.
+   다만 출제 후보가 이만큼도 안 되면 같은 문제가 반복되므로 다음 문제를 미리 연다.
+
+   3이었는데 5로 올렸습니다 (2026-08-24). 실제 프로필로 300문제를 뽑아보니
+   **서로 다른 문제가 30개뿐**이고 상위 8개가 57%를 차지했습니다 — 부모가 먼저 알아챘습니다.
+   숫자는 sim/repeat.mjs 로 재봅니다. 올릴 때는 "한 번에 배우는 게 너무 많지 않은가"를
+   같이 보세요. 반복을 줄이는 가장 큰 손잡이는 이 값이 아니라 **부모가 단원을 여는 것**입니다. */
+const NEW_AT_ONCE = 5;
+const MIN_POOL = 12;
 
 /* 자유 모드에서 무엇을 낼지 — 팩 하나이거나 과목 전체다.
    문자열을 넘기면 팩 하나로 본다(예전 호출부와 호환). */
@@ -178,9 +219,14 @@ function poolSize(index, facts, pick, open) {
   return n;
 }
 
+/* 모르는 것을 더 자주 내되, 차이가 너무 크면 아는 문제가 영영 안 나온다.
+   14:0.8(17.5배)이었는데 8:2.5(3.2배)로 완만하게 했습니다 (2026-08-24).
+   17.5배에서는 새로 연 몇 개가 화면을 독차지해서 "같은 문제만 나온다"가 됩니다. */
+const WEIGHT = { 0: 8, 1: 6, 2: 4.5, 3: 3.5, 4: 2.5 };
+
 function weightOf(key, entry, fact, open, today) {
   if (entry.gated && fact.m === 0 && !open.has(key)) return 0;   // 아직 안 연 것은 잠금
-  const base = { 0: 14, 1: 8, 2: 3.5, 3: 1.6, 4: 0.8 }[fact.m];
+  const base = WEIGHT[fact.m];
   const rested = fact.lastSeenDay && daysBetween(fact.lastSeenDay, today) >= 3;
   return rested ? base * 1.5 : base;
 }

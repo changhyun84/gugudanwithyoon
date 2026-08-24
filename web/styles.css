@@ -102,6 +102,9 @@ h1,h2,h3,.display{font-family:'Jua','Apple SD Gothic Neo',sans-serif;font-weight
 .item:active{transform:translateY(2px)}
 .item.worn{border-color:var(--grass);background:#F1F8EC}
 .item.locked{opacity:.55}
+/* 다음 단계 물건 — 보이지만 아직 못 산다. 눌러도 아무 일도 안 나게 커서를 그대로 둔다 */
+.item.soon{opacity:.45;border-style:dashed;filter:grayscale(.6)}
+.item.soon .st{color:var(--sun-deep,#B08A6A)}
 .item svg{width:100%;height:auto;display:block}
 .item .nm{font-family:'Jua',sans-serif;font-size:16px;margin-top:2px}
 .item .pr{font-size:14px;color:var(--grass-deep);display:flex;align-items:center;justify-content:center;gap:4px}

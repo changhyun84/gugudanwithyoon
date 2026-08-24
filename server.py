@@ -1,4 +1,4 @@
-"""양이랑 구구단 v2 — 서버 (Python 표준 라이브러리만)"""
+"""흰양이와 공부하기 — 서버 (Python 표준 라이브러리만)"""
 
 import json
 import os
@@ -111,7 +111,8 @@ def new_profile(pid, goal):
         "history": [],
         "collection": {"stickers": [], "boardsCompleted": 0},
         "records": {"speed": {}},
-        "progress": {},   # 과목마다 "여기까지" 열림 (기획서 16.3)
+        "progress": {},   # 부모가 켠 단원 목록 {units: [...], deep: bool} (기획서 16.3)
+        "gifts": [],      # 부모가 직접 준 풀·별 기록 (구현-현황 28.6)
         "shopTier": 1,
         "settings": {"goal": goal, "reduceMotion": False},
     }
@@ -144,7 +145,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({
                 "profiles": list_profiles(),
                 "settings": self.public_settings(),
-                "packs": [{k: p[k] for k in ("id", "name", "subject", "unit", "order", "count")}
+                "packs": [{k: p[k] for k in ("id", "name", "subject", "unit", "order", "count", "deep")}
                           for p in load_packs() if p["count"]],
                 "messages": load_messages()[0],
                 "wishes": load_wishes()[0],
@@ -190,7 +191,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({"error": "PIN이 다릅니다"}, 403)
         wishes, wish_warnings = load_wishes()
         self.send_json({
-            "packs": [{k: p[k] for k in ("id", "name", "subject", "unit", "order", "file", "count", "warnings")}
+            "packs": [{k: p[k] for k in ("id", "name", "subject", "unit", "order", "file", "count", "deep", "warnings")}
                       for p in load_packs()],
             "messages": {"file": "messages.csv", "warnings": load_messages()[1]},
             "wishes": {"file": "wishes.csv", "list": wishes, "warnings": wish_warnings},
@@ -278,7 +279,7 @@ def local_ips():
 
 def print_banner(port):
     line = "─" * 44
-    print(f"\n{line}\n  양이랑 구구단이 켜졌습니다\n")
+    print(f"\n{line}\n  흰양이와 공부하기가 켜졌습니다\n")
     print("  아이패드에서 아래 주소로 들어가세요")
     for ip in local_ips():
         print(f"      http://{ip}:{port}")

@@ -18,7 +18,11 @@ let MESSAGES = {};        // content/messages.csv
 let WISHES = [];          // content/wishes.csv — 파일이 없으면 소원권 기능이 안 나타난다
 let ALLOW = null;         // 용돈 설정 (data/settings.json). 부모가 켜야 나타난다
 const recent = [];        // 최근 쓴 응원 5개 — 바로 반복되면 금방 질린다
-const recentKeys = [];    // 최근 낸 문제 3개 — 같은 문제가 연달아 나오지 않게
+/* 최근 낸 문제 — 여기 있는 것은 다시 안 낸다.
+   3이었는데 12로 늘렸습니다 (2026-08-24). 3이면 다섯 문제 만에 같은 게 돌아옵니다.
+   12면 최소 간격이 13문제라, 한 판(20문제) 안에서는 거의 안 겹칩니다. */
+const RECENT_KEYS = 12;
+const recentKeys = [];
 let view = 'home', quiz = null, shopTab = 'hat', askedAt = 0, sinceSave = 0;
 let pick = null;          // 자유 모드 — null(전부) / {pack} / {subject}
 let pickSubject = null;   // 과목을 고른 뒤 단원 화면에 머무는 동안
@@ -82,15 +86,18 @@ async function enter(id) {
   P.inventory.activeBackground ||= 'day';
   P.wishes ||= [];                                           // 받은 소원권. 지우지 않는다
   P.allowance ||= [];                                        // 바꾼 용돈 기록. 지우지 않는다
+  P.gifts ||= [];                                            // 엄마 아빠가 직접 준 풀·별
   INDEX = buildIndex(PACKS, P.disabled, P.progress);   // 부모가 끈 것과 아직 안 연 단원이 여기서 빠진다
   seedFacts(INDEX, P.facts);
   rollDay();
   const owed = catchUpBoards();   // 도감 보상은 5B에서 생겼다 — 그 전에 모은 것도 준다
   catchUpTier();
   catchUpUnits();
+  const gift = takeGift();
   await save();
   go('home');
-  if (owed) toast(`도감을 다 채운 판이 있었어! 별 ${owed}개`);
+  if (gift) toast(gift);
+  else if (owed) toast(`도감을 다 채운 판이 있었어! 별 ${owed}개`);
 }
 
 async function start() {
@@ -389,7 +396,7 @@ function startQuiz() { P.settings.newUnits = []; nextQ(); go('quiz'); }
 function nextQ() {
   quiz = makeQuestion(INDEX, P.facts, recentKeys, today(), pick);
   recentKeys.push(quiz.key);
-  if (recentKeys.length > 3) recentKeys.shift();
+  if (recentKeys.length > RECENT_KEYS) recentKeys.shift();
   askedAt = Date.now();
 }
 
@@ -687,6 +694,20 @@ function catchUpBoards() {
 
 /* 상점 단계도 더하기만 한다. facts에서 다시 세는 코드를 만들면
    부모가 문제를 끈 날 선반이 닫히고, 어제까지 살 수 있던 물건이 사라진다 (원칙 2.1 / 구현-현황 2.9). */
+/* 부모가 직접 준 풀·별 — 화면에 한 번만 알린다.
+   **얼마를 받았는지는 말하되 왜 받았는지는 말하지 않는다.** 이유 칸은 부모의 메모지
+   아이에게 하는 말이 아니다. "심부름을 해서 줬어" 는 보상이 조건이 되는 순간이다. */
+function takeGift() {
+  const fresh = (P.gifts || []).filter(g => !g.seen);
+  if (!fresh.length) return '';
+  let grass = 0, star = 0;
+  for (const g of fresh) { g.seen = true; grass += g.grass || 0; star += g.star || 0; }
+  const bits = [];
+  if (grass > 0) bits.push(`풀 ${grass}개`);
+  if (star > 0) bits.push(`별 ${star}개`);
+  return bits.length ? `엄마 아빠가 ${bits.join('하고 ')}를 줬어!` : '';
+}
+
 function catchUpTier() {
   const before = P.shopTier || 1;
   const now = Math.max(before, tierOf(P.totals.mastered));
@@ -781,7 +802,7 @@ function renderShop() {
   P.settings.newTier = 0;   // 들어왔으면 알림은 지운다
 
   const tabs = Object.entries(ITEMS)
-    .map(([slot, list]) => [slot, list.filter(buyable)])
+    .map(([slot, list]) => [slot, list.filter(it => buyable(it) || peekable(it))])
     .filter(([, list]) => list.length);
   tabs.push(['bg', null]);   // 배경은 별로 사므로 재고 조건이 없다
   if (!tabs.some(([slot]) => slot === shopTab)) shopTab = tabs[0][0];
@@ -806,14 +827,17 @@ function renderShop() {
   list.forEach(it => {
     const own = P.inventory.items.includes(it.id);
     const can = P.wallet.grass >= it.price;
+    const soon = !buyable(it);   // 다음 선반에 있는 것 — 보이지만 아직 못 산다
     // 전용은 그 친구에게 씌워서 보여준다 — 활동 캐릭터에 씌우면 못 입는 걸 입은 것처럼 보인다
     const on = it.only || active();
     const mini = charSVG(on, { ...worn(on), [slotOf(it.id)]: it.id }, 'happy');
-    html += `<div class="item ${own || can ? '' : 'locked'}" data-buy="${it.id}">${mini}` +
+    html += `<div class="item ${own || (can && !soon) ? '' : 'locked'}${soon ? ' soon' : ''}"` +
+      `${soon ? '' : ` data-buy="${it.id}"`}>${mini}` +
       `<div class="nm">${esc(it.nm)}</div>` +
       (it.only ? `<div class="only">${esc(charName(it.only))}만</div>` : '') +
-      (own ? '<div class="st">가지고 있어</div>'
-           : `<div class="pr ${can ? '' : 'cant'}">${GRASS_ICON} ${it.price}</div>`) +
+      (soon ? `<div class="st">${nextNeed()}개 더 외우면</div>`
+            : own ? '<div class="st">가지고 있어</div>'
+                  : `<div class="pr ${can ? '' : 'cant'}">${GRASS_ICON} ${it.price}</div>`) +
     '</div>';
   });
   app.innerHTML = html + '</div>' + nextShelf();
@@ -830,6 +854,18 @@ const buyable = it => (it.tier || 1) <= (P.shopTier || 1) &&
 
 /* 이 캐릭터가 입을 수 있는 것 */
 const wearable = (it, id) => !it.only || it.only === id;
+
+/* **다음 단계 것만** 회색으로 미리 보여준다 (부모 요청, 2026-08-24).
+   전부 보여주면 가게가 잠긴 물건 창고가 된다 — 그게 5B에서 안 보이게 한 이유였다(기획서 8.7).
+   한 단계만 보여주면 "조금만 더 하면 저게 열린다"가 되고, 그건 목표다.
+
+   아직 못 만난 친구의 전용 아이템은 **여전히 안 보인다.** 그 목표는 홈 화면의
+   회색 실루엣이 이미 맡고 있어서, 여기서 또 하면 같은 일을 두 곳에서 하는 것이 된다. */
+const peekable = it => (it.tier || 1) === (P.shopTier || 1) + 1 &&
+                       (!it.only || P.characters.unlocked.includes(it.only));
+
+/* 다음 선반까지 몇 개 남았나 */
+const nextNeed = () => Math.max(0, ([10, 25, 50, 65][(P.shopTier || 1) - 1] || 0) - P.totals.mastered);
 
 /* 다음 선반이 언제 열리는지 — 목표가 보이면 다음에 할 일이 생긴다 (기획서 8.3) */
 function nextShelf() {

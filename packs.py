@@ -14,7 +14,11 @@ HEADERS = {
     'wrong3':   ['오답3', 'wrong3'],
     'hint':     ['힌트', 'hint'],
     'group':    ['묶음', 'group'],
+    'level':    ['난이도', 'level'],
 }
+
+# 난이도 칸에 이 말이 들어 있으면 심화. 비어 있으면 기본이다.
+DEEP_WORDS = ('심화', '어려움', 'deep', 'hard')
 
 
 UNIT_RE = re.compile(r'^\d+(?:[-.]\d+)*')
@@ -80,6 +84,7 @@ def read_pack(path, pid, subject, order):
         'order': order,                     # 과목 안에서의 자연 정렬 순서
         'file': f'{subject}/{path.name}' if subject else path.name,
         'count': len(problems),
+        'deep': sum(1 for q in problems if q['deep']),
         'problems': problems,
         'warnings': ([enc_warning] if enc_warning else []) + warnings + more,
     }
@@ -192,12 +197,13 @@ def parse_csv(text, stem):
             'question': question, 'answer': answer,
             'wrongs': [w for w in (get(row, 'wrong1'), get(row, 'wrong2'), get(row, 'wrong3')) if w],
             'hint': get(row, 'hint'), 'group': get(row, 'group'),
+            'deep': get(row, 'level').lower() in DEEP_WORDS,
         })
     return stem, rows, warnings
 
 
 def parse_md(text, stem):
-    name, group = stem, ''
+    name, group, deep = stem, '', False
     rows, warnings = [], []
 
     for n, line in enumerate(text.splitlines(), start=1):
@@ -206,6 +212,8 @@ def parse_md(text, stem):
             name = line.lstrip('#').strip() or stem
         elif line.startswith('묶음:'):
             group = line.split(':', 1)[1].strip()
+        elif line.startswith('난이도:'):
+            deep = line.split(':', 1)[1].strip().lower() in DEEP_WORDS
         elif line.startswith('-'):
             body, _, hint = line[1:].partition('//')
             parts = re.split(r'->|→', body, maxsplit=1)
@@ -217,13 +225,16 @@ def parse_md(text, stem):
                 warnings.append(f'{n}번째 줄 — 문제가 비어 있어 건너뛰었습니다.')
                 continue
             rows.append({'question': question, 'answer': answer, 'wrongs': [],
-                         'hint': hint.strip(), 'group': group})
+                         'hint': hint.strip(), 'group': group, 'deep': deep})
     return name, rows, warnings
 
 
 # ── 문제 만들기 ────────────────────────────────────────
 
 def build_problems(rows, pack_id):
+    """기본을 먼저, 심화를 뒤에 놓는다. order가 곧 출제 순서이고,
+       엔진은 앞에서부터 몇 개씩만 연다 — 그래서 순서만 맞춰두면 심화가 저절로 뒤로 간다."""
+    rows = sorted(rows, key=lambda r: bool(r.get('deep')))
     warnings = []
     problems = []
     answers_by_group = {}
@@ -232,10 +243,15 @@ def build_problems(rows, pack_id):
     all_answers = [r['answer'] for r in rows]
 
     for order, r in enumerate(rows):
-        choices = r['wrongs'][:3]
-        if len(choices) < 3:
-            choices += auto_wrongs(r['answer'], 3 - len(choices), choices, r['question'],
-                                   answers_by_group.get(r['group'], []), all_answers)
+        # 겹치는 보기를 그냥 두면 화면에 같은 것이 둘 나오고 보기가 사실상 셋이 된다.
+        # 부모가 오답 칸에 직접 쓴 것도, 같은 묶음에서 끌어온 것도 겹칠 수 있다.
+        choices = dedupe(r['wrongs'], skip={r['answer']})[:3]
+        for _ in range(3):   # 채우다 또 겹칠 수 있으므로 몇 번 더 시도한다
+            if len(choices) >= 3:
+                break
+            choices = dedupe(choices + auto_wrongs(
+                r['answer'], 3 - len(choices), choices, r['question'],
+                answers_by_group.get(r['group'], []), all_answers), skip={r['answer']})
         if len(choices) < 3:
             warnings.append(f'"{r["question"]}" — 보기를 4개로 만들 수 없어 뺐습니다. '
                             f'오답 칸을 채우거나 같은 묶음에 문제를 더 넣어주세요.')
@@ -244,6 +260,7 @@ def build_problems(rows, pack_id):
         problems.append({
             'key': f'{pack_id}:{normalize(r["question"])}',
             'order': order,
+            'deep': bool(r.get('deep')),
             'prompt': r['question'],
             'answer': r['answer'],
             'choices': shuffled([r['answer']] + choices[:3]),
@@ -251,6 +268,16 @@ def build_problems(rows, pack_id):
             'group': r['group'],
         })
     return problems, warnings
+
+
+def dedupe(items, skip=()):
+    """순서를 지키며 겹치는 것을 버린다. 정답과 같은 것도 버린다."""
+    seen, out = set(skip), []
+    for x in items:
+        if x and x not in seen:
+            seen.add(x)
+            out.append(x)
+    return out
 
 
 def normalize(text):
@@ -264,26 +291,32 @@ def shuffled(items):
 
 
 def auto_wrongs(answer, need, taken, question, group_answers, all_answers):
-    """숫자면 헷갈릴 만한 값, 글자면 같은 묶음의 다른 정답을 보기로 쓴다.
+    """보기 넷은 **서로 같은 모양**이어야 한다.
+
+       1000의 오답으로 996·1002·1008을 내면 아이는 계산하지 않고 딱 떨어지는 수만 고른다.
+       실제로 그렇게 나갔었다(구현-현황 28장). 3학년이 단위 변환에서 하는 실수는
+       1002가 아니라 **자릿수**다 — 100이나 10000을 쓴다. 그래서 답의 끝자리 0 개수를 보고
+       오답의 자리도 거기에 맞춘다.
+
        문제에 이미 보이는 숫자는 답처럼 느껴지므로 보기에서 뺀다."""
-    used = {answer, *taken, *re.findall(r'\d+', question)}
+    used = {answer, *taken, *re.findall(r'\d+(?:\.\d+)?', question)}
     picks = []
 
-    if re.fullmatch(r'-?\d+', answer):
-        n = int(answer)
-        cands = [n + 1, n - 1, n + 2, n - 2]
-        if n >= 10:   # 한 자리 답에 30, 40 같은 보기가 나오면 너무 티가 난다
-            cands += [n + 10, n - 10, swap_digits(n)]
-            cands += [n + d for d in divisors(n)] + [n - d for d in divisors(n)]
-        cands = [str(c) for c in cands if c > 0]
-        random.shuffle(cands)
-        while len(picks) < need:
-            spare = [c for c in cands if c not in used]
-            if not spare:
-                spare = [str(n + random.randint(1, 9))]
-            pick = spare[0]
-            used.add(pick)
-            picks.append(pick)
+    cands = number_wrongs(answer)
+    if cands:
+        random.shuffle(cands[2:])   # 앞의 둘(자릿수 실수)은 우선순위를 지킨다
+        for c in cands:
+            if len(picks) >= need:
+                break
+            if c not in used:
+                used.add(c)
+                picks.append(c)
+        while len(picks) < need:    # 그래도 모자라면 마지막 수단
+            c = filler(answer, used)
+            if not c:
+                break
+            used.add(c)
+            picks.append(c)
         return picks
 
     pool = [a for a in group_answers if a not in used] or [a for a in all_answers if a not in used]
@@ -291,6 +324,48 @@ def auto_wrongs(answer, need, taken, question, group_answers, all_answers):
     for a in pool[:need]:
         picks.append(a)
     return picks
+
+
+def number_wrongs(answer):
+    """답이 수일 때의 오답 후보 — 앞쪽일수록 '있을 법한 실수'다. 수가 아니면 빈 목록."""
+    if re.fullmatch(r'-?\d+\.\d+', answer):
+        # 소수 — 소수점 아래 자릿수를 맞춘다. 0.3의 오답은 0.03이 아니라 0.2·0.5다.
+        places = len(answer.split('.')[1])
+        unit = 10 ** places
+        n = round(float(answer) * unit)
+        out = [n + 1, n - 1, n + 2, n - 2, n + 3, n + 5, n - 3]
+        return [f'{c / unit:.{places}f}' for c in out if c > 0]
+
+    if not re.fullmatch(r'-?\d+', answer):
+        return []
+
+    n = int(answer)
+    zeros = len(re.search(r'0*$', str(abs(n))).group(0)) if n else 0
+
+    if zeros:
+        # 10·100·1000 단위 답 — 단위 변환일 가능성이 높다. 자릿수 실수를 먼저 낸다.
+        step = 10 ** zeros
+        out = [n * 10, n // 10, n + step, n - step, n + 2 * step, n - 2 * step, n + 5 * step]
+    else:
+        out = [n + 1, n - 1, n + 2, n - 2]
+        if abs(n) >= 10:
+            # 한 자리 답에 30·40 같은 보기가 나오면 너무 티가 난다
+            out += [swap_digits(n), n + 10, n - 10]
+            out += [n + d for d in divisors(n)] + [n - d for d in divisors(n)]
+    return [str(c) for c in out if c > 0]
+
+
+def filler(answer, used):
+    """후보가 다 막혔을 때 — 답과 자릿수만 맞춘 아무 수"""
+    if not re.fullmatch(r'-?\d+', answer):
+        return None
+    n = int(answer)
+    step = 10 ** (len(re.search(r'0*$', str(abs(n))).group(0)) if n else 0)
+    for d in range(3, 40):
+        for c in (n + d * step, n - d * step):
+            if c > 0 and str(c) not in used:
+                return str(c)
+    return None
 
 
 def swap_digits(n):

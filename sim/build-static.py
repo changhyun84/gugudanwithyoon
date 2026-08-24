@@ -33,7 +33,7 @@ def build_content():
         'builtAt': str(date.today()),
         # 문제가 없는 팩은 아이 화면에 안 보내지만, 부모 화면은 경고를 봐야 하므로 다 싣는다
         'packs': [{k: p[k] for k in
-                   ('id', 'name', 'subject', 'unit', 'order', 'file', 'count', 'problems', 'warnings')}
+                   ('id', 'name', 'subject', 'unit', 'order', 'file', 'count', 'deep', 'problems', 'warnings')}
                   for p in scanned],
         'messages': messages,
         'messageWarnings': msg_warn,
@@ -80,7 +80,7 @@ def main():
     (DIST / '404.html').write_text(
         '<!doctype html><html lang="ko"><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
-        '<title>양이랑 구구단</title>'
+        '<title>흰양이와 공부하기</title>'
         '<body style="margin:0;display:grid;place-items:center;min-height:100vh;'
         'background:#E9F2EA;color:#33453A;font-family:sans-serif;text-align:center">'
         '<div><p style="font-size:20px">여기는 아무것도 없어</p>'

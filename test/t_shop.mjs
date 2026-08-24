@@ -38,10 +38,10 @@ function grab(name) {
 }
 
 let P = null;
-const body = ['catchUpTier', 'buyable', 'wearable', 'nextShelf'].map(grab).join('\n');
+const body = ['catchUpTier', 'buyable', 'wearable', 'peekable', 'nextNeed', 'nextShelf'].map(grab).join('\n');
 const shop = new Function('tierOf', 'getP', `
   ${body.replace(/\bP\./g, 'getP().')}
-  return { catchUpTier, buyable, wearable, nextShelf };
+  return { catchUpTier, buyable, wearable, peekable, nextNeed, nextShelf };
 `)(C.tierOf, () => P);
 
 let pass = 0, fail = 0;
@@ -60,6 +60,8 @@ const profile = (mastered = 0, tier = 1, unlocked = ['sheep'], grass = 0) => ({
 group('단계 경계 (기획서 8.3)');
 const at = [[0, 1], [9, 1], [10, 2], [24, 2], [25, 3], [49, 3], [50, 4], [64, 4], [65, 5], [999, 5]];
 ok('0·10·25·50·65에서 열림', at.every(([m, t]) => C.tierOf(m) === t));
+/* 5단계 조건은 **별을 주는 문제 수 안**이어야 합니다. 넘으면 영영 안 열립니다.
+   문제 파일이 늘면 여유가 생기지만, 조건은 그래도 올리지 마세요(구현-현황 13.1). */
 ok('5단계 조건이 별을 주는 문제 수 안', C.TIER_NEED[4] <= 75);
 
 /* ── 단계는 내려가지 않는다 (원칙 2.9) ── */
@@ -106,6 +108,31 @@ group('입을 수 있는 것');
 const rbow = C.ALL_ITEMS.find(i => i.id === 'hrbow');
 ok('토끼 전용은 토끼만', shop.wearable(rbow, 'rabbit') && !shop.wearable(rbow, 'sheep'));
 ok('공용은 누구나', C.ALL_ITEMS.filter(i => !i.only).every(i => shop.wearable(i, 'koala')));
+
+/* ── 다음 단계 미리보기 (2026-08-24) ── */
+group('다음 단계는 회색으로 보여준다 — 그 다음 단계는 안 보여준다');
+
+P = profile(0, 1, ['sheep']);
+const peek = C.ALL_ITEMS.filter(shop.peekable);
+ok('1단계에서는 2단계 것만 미리 보인다', peek.length && peek.every(i => (i.tier || 1) === 2));
+ok('3단계 이후는 아직 안 보인다', !peek.some(i => (i.tier || 1) >= 3));
+ok('살 수 있는 것과 겹치지 않는다', !peek.some(shop.buyable));
+ok('1단계 화면에 나오는 것 = 살 것 + 미리 볼 것',
+  C.ALL_ITEMS.filter(i => shop.buyable(i) || shop.peekable(i)).length ===
+  C.ALL_ITEMS.filter(i => (i.tier || 1) <= 2 && !i.only).length);
+
+P = profile(0, 5, ['sheep']);
+ok('마지막 단계에서는 미리 볼 것이 없다', !C.ALL_ITEMS.filter(shop.peekable).length);
+
+/* 못 만난 친구의 전용은 여전히 안 보인다 — 홈 화면 실루엣이 이미 하는 일이다 (기획서 8.7) */
+P = profile(0, 2, ['sheep']);
+ok('못 만난 친구의 전용은 미리보기에도 안 나온다',
+  !C.ALL_ITEMS.filter(shop.peekable).some(i => i.only && i.only !== 'sheep'));
+
+P = profile(3, 1);
+ok('미리보기에 "몇 개 더" 가 붙는다', shop.nextNeed() === 7);
+P = profile(65, 5);
+ok('마지막 단계에서는 0', shop.nextNeed() === 0);
 
 /* ── 다음 선반 안내 ── */
 group('다음 선반 안내');

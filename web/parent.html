@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>부모 화면 — 양이랑 구구단</title>
+<title>부모 화면 — 흰양이와 공부하기</title>
 <style>
   body { margin:0; padding:40px 24px 80px; background:#f6f7f8; color:#2f3b46;
          font-family:"Malgun Gothic","Apple SD Gothic Neo",system-ui,sans-serif; line-height:1.6; }
@@ -66,6 +66,9 @@
   .cut { border-top:1px dashed #c9d3c9; margin:6px 0 4px; padding-top:4px; font-size:12px; color:#7c8c7c; }
   .row input[type=number] { width:5.5em; }
   .row button { flex:1; }
+  label.unit { display:block; margin:3px 0; font-weight:normal; }
+  label.unit .hint { font-size:12px; }
+  .gift { font-size:13px; color:#5a6a5a; border-top:1px solid #e4eae4; padding:4px 0; }
 </style>
 </head>
 <body>
@@ -74,15 +77,12 @@
   <p class="sub">아이 화면에서는 여기로 오는 길이 없습니다.</p>
 
   <section>
-    <h2>PIN</h2>
-    <p class="hint">설정을 바꿀 때 필요합니다. 처음 값은 0000입니다.</p>
-    <input id="pin" type="password" inputmode="numeric" value="0000">
-  </section>
-
-  <section>
     <h2>진행 현황</h2>
-    <label>프로필</label>
-    <select id="who"></select>
+    <div class="row">
+      <label style="margin:0">아이 <select id="who"></select></label>
+      <label style="margin:0">PIN <input id="pin" type="password" inputmode="numeric"
+        value="0000" style="width:6em"></label>
+    </div>
     <table id="stat"><tr><td>불러오는 중…</td></tr></table>
 
     <h3>최근 7일</h3>
@@ -99,22 +99,46 @@
   </section>
 
   <section>
-    <h2>학습 진도</h2>
-    <p class="hint">과목마다 <b>어디까지 열지</b>를 정합니다. 그 뒤의 단원은 아이에게 안 나옵니다 —
+    <h2>학습 진도 — 낼 단원 고르기</h2>
+    <p class="hint">체크한 단원만 아이에게 나옵니다. <b>순서와 상관없이 원하는 것만</b> 켤 수 있어서,
       다음 학기 문제를 미리 넣어두어도 괜찮습니다.</p>
-    <p class="hint"><b>진도를 내려도 사라지는 것은 없습니다.</b> 앞으로 그 문제가 안 나올 뿐,
+    <p class="hint"><b>꺼도 사라지는 것은 없습니다.</b> 앞으로 그 문제가 안 나올 뿐,
       아이가 쌓은 진도·별·스티커·해금한 친구는 그대로입니다.</p>
+    <label style="margin-top:10px"><input type="checkbox" id="deepOn" style="width:auto;margin-right:6px">
+      <b>심화 문제도 낸다</b></label>
+    <p class="hint" style="margin-top:2px">심화는 같은 내용을 <b>다르게 묻는 문제</b>입니다 —
+      문장제·거꾸로 묻기·두 단계. 그 단원의 기본을 다 지나간 뒤에야 나옵니다.</p>
     <div id="progress">불러오는 중…</div>
+    <div class="row" style="margin-top:10px">
+      <button id="saveProg">진도 저장</button>
+      <button class="soft" id="reload" style="flex:0 0 auto">파일 다시 읽기</button>
+    </div>
     <p class="msg" id="msgProg"></p>
+
+    <details>
+      <summary>문제 하나씩 끄기</summary>
+      <p class="hint">단원은 켜두되 특정 문제만 빼고 싶을 때 씁니다.
+        <b>파일에서 지우지 마세요</b> — 지우면 아이가 쌓아둔 진도까지 사라집니다.</p>
+      <div class="picks" id="packPicks"></div>
+      <div id="editor"></div>
+    </details>
   </section>
 
   <section>
-    <h2>문제 켜고 끄기</h2>
-    <p class="hint">지금 아이에게 안 나오게 하고 싶은 문제를 끄세요.
-      <b>파일에서 지우지 마세요</b> — 지우면 아이가 쌓아둔 진도까지 사라집니다.
-      끄면 진도가 남아 있어서 언제든 다시 켤 수 있고, 이미 받은 별과 스티커도 그대로입니다.</p>
-    <div class="picks" id="packPicks"></div>
-    <div id="editor"></div>
+    <h2>풀 · 별 주기</h2>
+    <p class="hint">심부름을 했거나, 밖에서 열심히 한 날에 직접 줄 수 있습니다.
+      아이 화면에는 <b>"엄마가 줬어!"</b> 로 뜹니다.</p>
+    <p class="rule">공부로 받은 것과 섞이지만, 아이는 구분하지 않습니다 — 그게 낫습니다.
+      다만 <b>줄이는 것은 되도록 하지 마세요.</b> 어제 있던 것이 오늘 없어지는 경험은
+      이 게임이 통째로 피하려고 만든 것입니다(원칙 2.1). 잘못 준 것을 되돌릴 때만 쓰세요.</p>
+    <div class="row">
+      <span>🌿 풀 <input id="giveGrass" type="number" step="10" value="0" style="width:6em"></span>
+      <span>⭐ 별 <input id="giveStar" type="number" step="1" value="0" style="width:5em"></span>
+      <input id="giveWhy" type="text" placeholder="이유 (아이에게는 안 보입니다)" style="flex:1;min-width:12em">
+    </div>
+    <button id="giveBtn">주기</button>
+    <p class="msg" id="msgGive"></p>
+    <div id="giveLog"></div>
   </section>
 
   <section>
@@ -122,14 +146,6 @@
     <p class="hint">아이가 별로 바꾼 소원입니다. <b>목록은 지워지지 않습니다</b> — 들어주신 뒤에도 기념으로 남습니다.
       소원 종류는 <code>content/wishes.csv</code>에서 고치세요.</p>
     <div id="wishes">불러오는 중…</div>
-  </section>
-
-  <section>
-    <h2>문제 팩</h2>
-    <p class="hint"><code>content\problems</code> 폴더의 CSV·MD 파일입니다. 저장하면 바로 반영되고,
-      아이패드에서 새로고침만 하면 됩니다. 아래 목록이 안 보이면 PIN을 확인하세요.</p>
-    <div id="packs">불러오는 중…</div>
-    <button id="reload">다시 읽기</button>
   </section>
 
   <section>
@@ -179,25 +195,16 @@
     <div id="impPreview"></div>
   </section>
 
-  <section>
-    <h2>v1 기록 가져오기</h2>
-    <p class="hint">예전 게임의 <b>설정 → 기록 백업</b>에 있던 글자를 그대로 붙여넣으세요.
-      모은 풀과 아이템, 양 이름, 외운 구구단이 위에서 고른 프로필로 옮겨집니다.
-      <b>지금 진행 중인 기록은 덮어씁니다.</b></p>
-    <textarea id="v1" placeholder='{"name":"뭉치","grass":240, ...}'></textarea>
-    <button id="migrate">이 기록 가져오기</button>
-    <p class="msg" id="msgMig"></p>
-  </section>
 </main>
 
 <script type="module">
-import { buildIndexAll, openPacks, isRewardable, readLog, weakness } from '/engine.js';
+import { buildIndexAll, openPacks, readLog, weakness } from '/engine.js';
 import * as store from '/store.js';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[<>&"]/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;' }[c]));
 
-const MIN_POOL = 8;   // engine.js와 같은 값. 이보다 적으면 같은 문제가 반복된다
+const MIN_POOL = 12;  // engine.js와 같은 값. 이보다 적으면 같은 문제가 반복된다
 const MIN_SEEN = 3;   // 이만큼 안 나온 문제는 '약하다'고 부르지 않는다
 const WEEKDAY = ['일','월','화','수','목','금','토'];
 
@@ -252,6 +259,7 @@ async function showStat() {
     ['함께한 날', `${p.totals.daysPlayed}일`],
   ].map(([k, v]) => `<tr><td>${k}</td><td>${esc(v)}</td></tr>`).join('');
 
+  showGiftLog();
   showWeek();
   showStock();
   showWeak();
@@ -351,103 +359,122 @@ function showWeak() {
         <td class="do">${esc(todo(r.e))}</td></tr>`).join('') + '</table>';
 }
 
-/* ============ 학습 진도 ============ */
+/* ============ 학습 진도 — 낼 단원 고르기 ============ */
 
-function unitsBySubject() {
+/* 예전에는 과목마다 "여기까지" 한 줄로 끊었습니다. 부모가 원한 것은
+   **원하는 단원만 켜는 것**이었습니다 — 2학기를 먼저 열거나, 어려운 한 단원만 빼거나.
+   끊는 방식으로는 둘 다 안 됩니다. 그래서 단원마다 체크박스가 됐습니다(2026-08-24).
+
+   이 화면이 예전의 '문제 팩' 칸도 겸합니다. 문제 수·심화 수·읽다가 건너뛴 줄이 여기 다 나옵니다. */
+
+const GUGUDAN_ROW = { id: 'gugudan', subject: '수학', unit: '0', order: -1, name: '0 구구단' };
+
+function unitRows() {
   const out = {};
   for (const p of PACKS) {
-    if (!p.subject || !p.unit) continue;   // 폴더 밖이거나 번호가 없으면 진도 관리 대상이 아니다
+    if (!p.subject || !p.unit) continue;   // 폴더 밖이거나 번호가 없으면 늘 나온다
     (out[p.subject] ||= []).push(p);
   }
+  // 내장 구구단은 파일이 없지만 부모가 끌 수 있어야 한다
+  if (Object.keys(ALL).some(k => ALL[k].packId === 'gugudan'))
+    (out[GUGUDAN_ROW.subject] ||= []).unshift(GUGUDAN_ROW);
   for (const list of Object.values(out)) list.sort((a, b) => a.order - b.order);
   return out;
 }
 
 function packStat(packId) {
-  const keys = Object.entries(ALL).filter(([, e]) => e.packId === packId && e.rewardable);
-  return { total: keys.length, done: keys.filter(([k]) => PROFILE?.facts?.[k]?.m === 4).length };
+  const rows = Object.entries(ALL).filter(([, e]) => e.packId === packId && e.rewardable);
+  return {
+    total: rows.length,
+    deep: rows.filter(([, e]) => e.deep).length,
+    done: rows.filter(([k]) => PROFILE?.facts?.[k]?.m === 4).length,
+  };
 }
 
 const shortName = p => p.name.startsWith(p.unit) ? p.name.slice(p.unit.length).trim() || p.name : p.name;
 
 function showProgress() {
-  const subs = unitsBySubject();
+  const subs = unitRows();
   if (!Object.keys(subs).length) {
     $('progress').innerHTML =
-      '<p class="hint">아직 과목 폴더가 없습니다. <code>content/problems/수학/1-1 구구단.csv</code> 처럼 ' +
-      '폴더를 만들면 여기서 단원별로 진도를 정할 수 있습니다. ' +
-      '지금 파일을 옮기지 않아도 게임은 그대로 돕니다.</p>';
+      '<p class="hint">아직 과목 폴더가 없습니다. <code>content/problems/수학/1-3 나눗셈.csv</code> 처럼 ' +
+      '폴더를 만들면 여기서 단원마다 켜고 끌 수 있습니다.</p>';
     return;
   }
   if (!PROFILE) return;
 
   // 열림 판정은 engine.js와 같은 함수를 쓴다. 규칙을 두 곳에 두면 반드시 어긋난다.
   const open = openPacks(PACKS, PROFILE.progress);
+  $('deepOn').checked = PROFILE.progress?.deep !== false;
 
   $('progress').innerHTML = Object.entries(subs).map(([subject, list]) => {
-    const lastOpen = [...list].reverse().find(p => open.has(p.id)) || list[0];
-    let cut = false;
+    const on = list.filter(p => open.has(p.id)).length;
     const rows = list.map(p => {
-      const on = open.has(p.id), s = packStat(p.id);
-      const line = `<div class="${on ? '' : 'shut'}">${on ? '✓' : '·'} <b>${esc(p.unit)}</b> ` +
-        `${esc(shortName(p))} — 문제 ${s.total}개` +
-        (on && s.total ? ` · 완전히 외운 것 ${s.done}` : '') + '</div>';
-      if (!on && !cut) { cut = true; return '<div class="cut">여기부터는 아직 안 열렸습니다</div>' + line; }
-      return line;
+      const s = packStat(p.id);
+      const warns = (WARN.get(p.id) || []).map(w => `<div class="warn">· ${esc(w)}</div>`).join('');
+      return `<label class="unit"><input type="checkbox" data-unit="${esc(p.id)}"
+          ${open.has(p.id) ? 'checked' : ''} style="width:auto;margin-right:7px">
+        <b>${esc(p.unit)}</b> ${esc(shortName(p))}
+        <span class="hint">— 기본 ${s.total - s.deep}` +
+        (s.deep ? ` · 심화 ${s.deep}` : '') +
+        (s.done ? ` · <b>외운 것 ${s.done}</b>` : '') + '</span></label>' + warns;
     }).join('');
 
-    const next = list[list.indexOf(lastOpen) + 1];
-    const st = packStat(lastOpen.id);
-    const suggest = next && st.total && st.done === st.total
-      ? `<p class="msg">${esc(shortName(lastOpen))}을(를) 다 외웠어요. ` +
-        `<button data-open="${esc(subject)}" data-unit="${esc(next.unit)}">${esc(next.name)} 열기</button></p>`
-      : '';
-
     return `<div class="pack">
-      <div class="row"><b>${esc(subject)}</b><span>여기까지 열기</span>
-        <select data-sel="${esc(subject)}">${list.map(p =>
-          `<option value="${esc(p.unit)}"${p.id === lastOpen.id ? ' selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
-        <button data-save="${esc(subject)}">저장</button></div>
-      ${rows}${suggest}
-      <p class="warn" data-warn="${esc(subject)}" style="display:none"></p>
-    </div>`;
+      <div class="row"><b>${esc(subject)}</b>
+        <span class="hint">${on}/${list.length} 단원 켜짐</span>
+        <button class="soft" data-all="${esc(subject)}" style="flex:0 0 auto">전부 켜기</button>
+        <button class="soft" data-none="${esc(subject)}" style="flex:0 0 auto">전부 끄기</button></div>
+      ${rows}</div>`;
   }).join('');
 
-  $('progress').querySelectorAll('[data-sel]').forEach(sel => sel.onchange = () => {
-    const subject = sel.dataset.sel, list = subs[subject];
-    const now = [...list].reverse().find(p => open.has(p.id)) || list[0];
-    const to = list.find(p => p.unit === sel.value);
-    const warn = $('progress').querySelector(`[data-warn="${CSS.escape(subject)}"]`);
-    if (to && to.order < now.order) {
-      warn.textContent = `${shortName(to)}까지로 내리면 그 뒤 단원이 앞으로 안 나옵니다. ` +
-        '아이가 쌓은 진도·별·스티커는 그대로 남습니다.';
-      warn.style.display = '';
-    } else warn.style.display = 'none';
+  const boxes = () => [...$('progress').querySelectorAll('[data-unit]')];
+  const mark = () => { dirtyProg = true; $('msgProg').textContent = '저장을 눌러야 반영됩니다.'; };
+  boxes().forEach(b => b.onchange = mark);
+  $('progress').querySelectorAll('[data-all]').forEach(b => b.onclick = () => {
+    subs[b.dataset.all].forEach(p => {
+      const box = $('progress').querySelector(`[data-unit="${CSS.escape(p.id)}"]`);
+      if (box) box.checked = true;
+    });
+    mark();
   });
-
-  $('progress').querySelectorAll('[data-save]').forEach(b => b.onclick = () => {
-    const subject = b.dataset.save;
-    saveProgress(subject, $('progress').querySelector(`[data-sel="${CSS.escape(subject)}"]`).value);
+  $('progress').querySelectorAll('[data-none]').forEach(b => b.onclick = () => {
+    subs[b.dataset.none].forEach(p => {
+      const box = $('progress').querySelector(`[data-unit="${CSS.escape(p.id)}"]`);
+      if (box) box.checked = false;
+    });
+    mark();
   });
-  $('progress').querySelectorAll('[data-open]').forEach(b =>
-    b.onclick = () => saveProgress(b.dataset.open, b.dataset.unit));
 }
 
-async function saveProgress(subject, unit) {
+let dirtyProg = false;
+$('deepOn').onchange = () => { dirtyProg = true; $('msgProg').textContent = '저장을 눌러야 반영됩니다.'; };
+
+$('saveProg').onclick = async () => {
+  const units = [...$('progress').querySelectorAll('[data-unit]')]
+    .filter(b => b.checked).map(b => b.dataset.unit);
+
+  if (!units.length && !confirm('단원을 하나도 안 켜면 아이 화면에 낼 문제가 없습니다. 그래도 저장할까요?')) return;
+
   $('msgProg').textContent = '저장 중…';
   try {
-    // 아이가 지금 놀고 있을 수 있다. 방금 상태를 다시 받아 progress만 얹는다 (구현-현황 2.11).
+    // 아이가 지금 놀고 있을 수 있다. 방금 상태를 다시 받아 진도만 얹는다 (구현-현황 2.11).
     const fresh = await store.loadProfile(PROFILE.id);
-    fresh.progress = { ...(fresh.progress || {}), [subject]: unit };
+    fresh.progress = { units, deep: $('deepOn').checked };
+    // 팩 단위 끄기는 이 화면으로 합쳐졌다. 예전에 꺼둔 것이 남아 겹치면 부모가 이유를 알 수 없다.
+    if (fresh.disabled?.packs?.length) fresh.disabled.packs = [];
     await store.saveProfile(fresh);
     PROFILE = fresh;
-    $('msgProg').textContent = `${subject} — ${unit}까지 열었습니다. 아이패드에서 새로고침하면 반영됩니다.`;
+    OFF.packs = [];
+    dirtyProg = false;
+    $('msgProg').textContent = `${units.length}개 단원을 켰습니다. 아이패드에서 새로고침하면 반영됩니다.`;
     showProgress();
     showStock();
+    showPicks();
   } catch {
     $('msgProg').textContent = '저장하지 못했습니다. 다시 눌러주세요.';
   }
-}
+};
 
 /* ============ 문제 켜고 끄기 ============ */
 
@@ -562,46 +589,76 @@ function openPack(packId) {
   paint();
 }
 
-addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+addEventListener('beforeunload', e => { if (dirty || dirtyProg) { e.preventDefault(); e.returnValue = ''; } });
 
 $('who').onchange = showStat;
 await showStat();
 
-/* ============ 문제 팩 목록 ============ */
+/* ============ 문제 파일 읽기 ============ */
+
+/* 파일에서 읽다가 건너뛴 줄이 있으면 진도 목록에 빨간 글씨로 붙는다.
+   예전에는 '문제 팩'이라는 칸이 따로 있었는데, 부모가 두 곳을 오가야 해서 합쳤다. */
+let WARN = new Map();
 
 async function showPacks() {
   const res = await store.parentPacks($('pin').value);
-  if (res.error) return $('packs').textContent = res.error;
-  if (!res.packs.length) return $('packs').textContent = '아직 파일이 없습니다. 내장 구구단만 나옵니다.';
-
-  /* 과목(폴더)으로 묶어 보여준다. 폴더 밖의 파일은 맨 아래 '과목 없음'으로 모은다. */
-  const subjects = [];
-  for (const p of res.packs) {
-    const key = p.subject || '';
-    let g = subjects.find(s => s.key === key);
-    if (!g) subjects.push(g = { key, list: [] });
-    g.list.push(p);
-  }
-  subjects.sort((a, b) => (a.key ? 0 : 1) - (b.key ? 0 : 1));
-
-  $('packs').innerHTML = subjects.map(g => `
-    <div class="pack">
-      <b>${g.key ? esc(g.key) : '과목 없음'}</b>
-      ${g.key ? '' : '<span class="hint"> — 폴더 밖에 있어 진도 관리 대상이 아닙니다. 항상 나옵니다.</span>'}
-      ${g.list.map(p => `<div>${p.unit ? `<b>${esc(p.unit)}</b> ` : ''}${esc(p.name)}` +
-        ` — 문제 ${p.count}개` +
-        p.warnings.map(w => `<div class="warn">· ${esc(w)}</div>`).join('') + '</div>').join('')}
-    </div>`).join('') +
-    (subjects.some(g => g.key) ? '' :
-      '<p class="hint">폴더를 만들면 <b>폴더 이름이 과목</b>이 됩니다. ' +
-      '<code>content/problems/수학/1-1 구구단.csv</code> 처럼 두면 단원별로 진도를 정할 수 있습니다. ' +
-      '지금 파일을 옮기지 않아도 게임은 그대로 돕니다.</p>');
-
+  if (res.error) { $('msgProg').textContent = res.error; return; }
+  WARN = new Map(res.packs.map(p => [p.id, p.warnings]));
   WISHDATA = res.wishes;
   showWishes(WISHDATA);
+  showProgress();
 }
 showPacks();
 $('reload').onclick = showPacks;
+
+/* ============ 풀 · 별 주기 ============ */
+
+/* 심부름·집안일처럼 게임 밖의 일에도 보상을 줄 수 있게 합니다(부모 요청, 2026-08-24).
+   **주는 것이 기본이고 빼는 것은 예외**입니다. 어제 있던 것이 오늘 없어지는 경험은
+   이 게임이 통째로 피하려고 만든 것이라(원칙 2.1), 뺄 때는 한 번 더 묻습니다.
+
+   기록은 프로필에 남습니다. 아이 화면에는 금액이 아니라 "엄마가 줬어!"만 뜹니다. */
+
+function showGiftLog() {
+  const list = (PROFILE?.gifts || []).slice(-6).reverse();
+  $('giveLog').innerHTML = list.length
+    ? list.map(g => `<div class="gift">${esc(g.at)} · ` +
+        [g.grass ? `🌿 ${g.grass > 0 ? '+' : ''}${g.grass}` : '',
+         g.star ? `⭐ ${g.star > 0 ? '+' : ''}${g.star}` : ''].filter(Boolean).join(' · ') +
+        (g.why ? ` — ${esc(g.why)}` : '') + '</div>').join('')
+    : '<p class="hint">아직 준 적이 없습니다.</p>';
+}
+
+$('giveBtn').onclick = async () => {
+  const grass = Math.trunc(Number($('giveGrass').value) || 0);
+  const star = Math.trunc(Number($('giveStar').value) || 0);
+  if (!grass && !star) return $('msgGive').textContent = '줄 풀이나 별을 적어주세요.';
+  if (!PROFILE) return $('msgGive').textContent = '먼저 아이를 고르세요.';
+  if ((grass < 0 || star < 0) &&
+      !confirm('빼는 것은 아이에게 "어제 있던 게 없어졌다"가 됩니다. 잘못 준 것을 되돌리는 경우에만 쓰세요.\n\n계속할까요?'))
+    return;
+
+  $('msgGive').textContent = '주는 중…';
+  try {
+    const fresh = await store.loadProfile(PROFILE.id);
+    // 아이가 지금 놀고 있을 수 있다 — 방금 상태 위에 얹는다
+    fresh.wallet.grass = Math.max(0, (fresh.wallet.grass || 0) + grass);
+    fresh.wallet.star = Math.max(0, (fresh.wallet.star || 0) + star);
+    (fresh.gifts ||= []).push({
+      at: new Date().toLocaleDateString('sv-SE'),
+      grass, star, why: $('giveWhy').value.trim().slice(0, 40), seen: false,
+    });
+    await store.saveProfile(fresh);
+    PROFILE = fresh;
+    $('msgGive').textContent =
+      `줬습니다. 지금 풀 ${fresh.wallet.grass} · 별 ${fresh.wallet.star}. 아이패드에서 새로고침하면 보입니다.`;
+    $('giveGrass').value = 0; $('giveStar').value = 0; $('giveWhy').value = '';
+    showGiftLog();
+    showStat();
+  } catch {
+    $('msgGive').textContent = '주지 못했습니다. 다시 눌러주세요.';
+  }
+};
 
 /* ============ 소원권 ============ */
 
@@ -769,39 +826,6 @@ function showImport() {
   };
 }
 
-/* v1(단일 HTML + localStorage) → v2 프로필 변환 */
-function fromV1(old, p) {
-  p.wallet.grass = old.grass || 0;
-  p.inventory.items = old.owned || [];
-  p.characters.equipped.sheep = { hat: old.hat || null, neck: old.scarf || null, prop: null };
-  if (old.name) p.characters.names.sheep = String(old.name).slice(0, 8);
-  p.totals.daysPlayed = old.totalDays || 0;
-  for (const [k, m] of Object.entries(old.facts || {})) {
-    p.facts[`gugudan:${k}`] = {
-      m, seen: 0, right: 0, lastSeenDay: null, log: [],
-      masteredAt: m === 4 && isRewardable(`gugudan:${k}`) ? p.createdAt : null, bestMs: null
-    };
-  }
-  p.totals.mastered = Object.values(p.facts).filter(f => f.masteredAt).length;
-  return p;
-}
-
-$('migrate').onclick = async () => {
-  const id = $('who').value;
-  if (!id) return $('msgMig').textContent = '먼저 아이 화면에서 프로필을 만들어 주세요.';
-
-  let old;
-  try { old = JSON.parse($('v1').value.trim()); }
-  catch { return $('msgMig').textContent = '붙여넣은 내용이 올바르지 않습니다.'; }
-  if (typeof old.grass !== 'number' || !old.facts)
-    return $('msgMig').textContent = '예전 게임의 백업 글자가 아닌 것 같습니다.';
-  if (!confirm(`${id}의 지금 기록을 덮어씁니다. 계속할까요?`)) return;
-
-  const p = await store.loadProfile(id);
-  await store.saveProfile(fromV1(old, p));
-  $('msgMig').textContent = `가져왔습니다. 풀 ${old.grass}, 아이템 ${(old.owned || []).length}개. 아이패드에서 새로고침하세요.`;
-  showStat();
-};
 </script>
 </body>
 </html>

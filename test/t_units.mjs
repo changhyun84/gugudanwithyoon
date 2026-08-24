@@ -7,6 +7,7 @@
    아이가 몇 달 쌓은 진도·마스터·스티커가 통째로 새 문제가 됩니다 (기술설계서 5.4). */
 
 import { execFileSync } from 'node:child_process';
+import { readFileSync as read } from 'node:fs';
 
 const ROOT = new URL('..', import.meta.url).pathname;
 
@@ -154,6 +155,60 @@ for f in pathlib.Path('content/problems/수학').glob('*.csv'):
 print(bad)`], { cwd: ROOT, encoding: 'utf8' }).trim();
 ok('수학 계산이 전부 맞다 (독립으로 다시 계산)', mathCheck === '0');
 
+/* ── 보기 품질 (2026-08-24) ── */
+group('보기 넷이 같은 모양인가 — 계산 안 하고 고를 수 있으면 안 됩니다');
+
+const shape = execFileSync('python3', ['-c', `
+import json, packs, pathlib, re
+def z(x):
+    return len(re.search(r'0*$', x).group(0)) if re.fullmatch(r'\\d+', x) else -1
+bad, tot, dup, short = 0, 0, 0, 0
+for p in packs.scan(pathlib.Path('content/problems')):
+    for q in p['problems']:
+        if len(set(q['choices'])) != 4: dup += 1
+        if len(q['choices']) != 4: short += 1
+        if not re.fullmatch(r'\\d+', q['answer']): continue
+        tot += 1
+        zs = [z(c) for c in q['choices']]
+        # 정답만 유일하게 0으로 끝나면 계산 없이 고를 수 있다
+        if z(q['answer']) > 0 and sum(1 for v in zs if v > 0) == 1: bad += 1
+print(json.dumps([bad, tot, dup, short]))`], { cwd: ROOT, encoding: 'utf8' });
+const [giveaway, numTotal, dupChoices, shortChoices] = JSON.parse(shape);
+
+ok(`보기가 전부 4개 (겹침 ${dupChoices} · 모자람 ${shortChoices})`, !dupChoices && !shortChoices);
+ok(`"딱 떨어지는 수만 고르면 맞는" 문제 0개 (${numTotal}개 중 ${giveaway})`, giveaway === 0);
+
+/* ── 기본과 심화 (파일) ── */
+group('기본과 심화');
+
+const deepCount = execFileSync('python3', ['-c', `
+import json, packs, pathlib
+ps = packs.scan(pathlib.Path('content/problems'))
+print(json.dumps({p['name']: [p['count'] - p['deep'], p['deep']] for p in ps}))`],
+  { cwd: ROOT, encoding: 'utf8' });
+const deepBy = JSON.parse(deepCount);
+ok('모든 단원에 심화가 있다',
+  Object.values(deepBy).every(([, d]) => d > 0));
+ok('심화가 기본보다 많지는 않다 — 기본이 먼저다',
+  Object.values(deepBy).every(([b, d]) => d <= b));
+ok(`심화 ${Object.values(deepBy).reduce((s, [, d]) => s + d, 0)}문제`,
+  Object.values(deepBy).reduce((s, [, d]) => s + d, 0) >= 150);
+
+/* ── 반복 (engine.js + app.js) ── */
+group('같은 문제가 너무 자주 나오지 않는가');
+
+const appTxt = read(new URL('../web/app.js', import.meta.url), 'utf8');
+const recentN = Number(/const RECENT_KEYS = (\d+)/.exec(appTxt)?.[1]);
+ok(`최근 낸 문제를 ${recentN}개 빼둔다 — 한 판(20문제) 안에서 안 겹치려면 10 이상`, recentN >= 10);
+ok('빼둔 목록을 실제로 그만큼 유지한다', appTxt.includes('recentKeys.length > RECENT_KEYS'));
+
+const engSrc = read(new URL('../web/engine.js', import.meta.url), 'utf8');
+const w = JSON.parse((/const WEIGHT = (\{[^}]+\})/.exec(engSrc)?.[1] || '{}').replace(/(\d):/g, '"$1":'));
+ok('가중치가 있다', Object.keys(w).length === 5);
+ok('모르는 것이 아는 것보다 자주 나온다', w[0] > w[4]);
+ok(`가장 센 것과 약한 것의 차이가 5배 이하 (${(w[0] / w[4]).toFixed(1)}배)`, w[0] / w[4] <= 5);
+ok('마스터한 문제도 계속 나온다 — 잊어버리면 안 된다', w[4] > 0);
+
 /* ── 진도 (engine.js) ── */
 group('진도 — 과목마다 "여기까지"');
 
@@ -178,17 +233,55 @@ const PACKS = [
 const opened = (progress) => [...E.openPacks(PACKS, progress)].sort().join(',');
 
 ok('진도를 안 정하면 과목마다 첫 단원만',
-  opened(null) === 'extra,flat,h1,m1');
+  opened(null) === 'extra,flat,gugudan,h1,m1');
 ok('폴더 밖은 늘 열려 있다', E.openPacks(PACKS, null).has('flat'));
 ok('단원 번호가 없으면 진도 관리 대상이 아니다', E.openPacks(PACKS, null).has('extra'));
 
-ok('수학 1-3까지', opened({ 수학: '1-3' }) === 'extra,flat,h1,m1,m2,m3');
+ok('수학 1-3까지', opened({ 수학: '1-3' }) === 'extra,flat,gugudan,h1,m1,m2,m3');
 ok('1-3에서는 1-10이 안 열린다 — 자연 정렬',
   !E.openPacks(PACKS, { 수학: '1-3' }).has('m10'));
-ok('1-10까지 열면 1-2·1-3도 같이', opened({ 수학: '1-10' }) === 'extra,flat,h1,m1,m10,m2,m3');
-ok('과목마다 따로', opened({ 한국사: '1-2' }) === 'extra,flat,h1,h2,m1');
+ok('1-10까지 열면 1-2·1-3도 같이', opened({ 수학: '1-10' }) === 'extra,flat,gugudan,h1,m1,m10,m2,m3');
+ok('과목마다 따로', opened({ 한국사: '1-2' }) === 'extra,flat,gugudan,h1,h2,m1');
 ok('진도를 되돌리면 다시 닫힌다 — 사라지는 것은 없다(16.4)',
-  opened({ 수학: '1-1' }) === 'extra,flat,h1,m1');
+  opened({ 수학: '1-1' }) === 'extra,flat,gugudan,h1,m1');
+
+/* ── 고른 단원만 켜기 (2026-08-24) ── */
+group('진도 — 고른 단원만 켜기');
+
+ok('고른 것만 열린다', opened({ units: ['m2', 'h2'] }) === 'extra,flat,h2,m2');
+ok('순서를 건너뛰어도 된다 — 2학기만 먼저 열 수 있다',
+  E.openPacks(PACKS, { units: ['m10'] }).has('m10'));
+ok('폴더 밖은 여기서도 늘 열려 있다', E.openPacks(PACKS, { units: [] }).has('flat'));
+ok('구구단도 끌 수 있다', !E.openPacks(PACKS, { units: ['m1'] }).has('gugudan'));
+ok('구구단을 켜면 열린다', E.openPacks(PACKS, { units: ['gugudan'] }).has('gugudan'));
+ok('하나도 안 켜도 폴더 밖만 남고 멈추지 않는다',
+  opened({ units: [] }) === 'extra,flat');
+
+/* 예전 프로필을 열 때 열려 있던 단원이 하나라도 닫히면 아이 화면이 갑자기 줄어든다 */
+for (const legacy of [null, { 수학: '1-3' }, { 한국사: '1-2' }, { 수학: '1-10' }]) {
+  const before = [...E.openPacks(PACKS, legacy)].sort().join(',');
+  const after = [...E.openPacks(PACKS, E.migrateProgress(PACKS, legacy))].sort().join(',');
+  ok(`예전 진도를 옮겨도 열린 것이 그대로 (${JSON.stringify(legacy)})`, before === after);
+}
+ok('이미 옮긴 것은 그대로 둔다',
+  E.migrateProgress(PACKS, { units: ['m2'] }).units.join() === 'm2');
+
+/* ── 기본과 심화 ── */
+group('기본과 심화');
+
+const DEEPPACKS = [{
+  id: 'd1', subject: '수학', unit: '1-1', order: 0, name: 'd1',
+  problems: [
+    { key: 'd1:a', order: 0, prompt: 'a', answer: '1', choices: ['1','2','3','4'], hint: '' },
+    { key: 'd1:b', order: 1, prompt: 'b', answer: '1', choices: ['1','2','3','4'], hint: '', deep: true },
+  ],
+}];
+const dIdx = E.buildIndex(DEEPPACKS, null, { units: ['d1'] });
+ok('심화도 기본으로는 색인에 들어간다', 'd1:b' in dIdx);
+ok('심화는 기본보다 뒤에 온다 — 기본을 지나야 열린다', dIdx['d1:b'].order > dIdx['d1:a'].order);
+ok('심화 표시가 남는다', dIdx['d1:b'].deep === true && !dIdx['d1:a'].deep);
+const noDeep = E.buildIndex(DEEPPACKS, null, { units: ['d1'], deep: false });
+ok('심화를 끄면 색인에서 빠진다', !('d1:b' in noDeep) && ('d1:a' in noDeep));
 
 /* ── 색인 ── */
 group('색인');
