@@ -155,7 +155,9 @@ ok('최상위가 에러 없이 끝까지 돈다', !B.err);
 if (B.err) console.log('     ', B.err.constructor.name, '—', B.err.message);
 for (const id of ['stat', 'progress', 'weak'])
   ok(`#${id}이(가) "불러오는 중…"에서 벗어난다`, !B.text(id).includes('불러오는 중'));
-ok('무엇을 해야 하는지 알려준다', B.text('progress').includes('아이 화면에서 먼저'));
+ok('기록이 어디 있는지 알려준다 — 와이파이가 아니라 브라우저 기준',
+  B.text('progress').includes('브라우저'));
+ok('정적 배포에서는 열자마자 위에 적어둔다', A.text('where').includes('이 브라우저 안'));
 
 /* ── 집 서버 모드 ── */
 group('집 서버 모드에서도 도는가 — 두 모드가 갈라지면 안 됩니다');
@@ -166,6 +168,8 @@ if (C.err) console.log('     ', C.err.constructor.name, '—', C.err.message);
 for (const id of ['stat', 'progress', 'weak', 'wishes'])
   ok(`#${id}이(가) "불러오는 중…"에서 벗어난다`, !C.text(id).includes('불러오는 중'));
 ok('진도에 단원 체크박스가 그려진다', /data-unit=/.test(C.text('progress')));
+ok('집 서버 모드에서는 브라우저 안내가 안 뜬다 — 그때는 기기끼리 같은 기록이다',
+  !C.text('where').includes('이 브라우저 안'));
 
 /* ── 선언 순서 ── */
 group('모듈 최상위 상태는 한 곳에 모여 있는가 (29장)');
