@@ -206,9 +206,16 @@ const esc = s => String(s).replace(/[<>&"]/g, c => ({ '<':'&lt;','>':'&gt;','&':
 
 const MIN_POOL = 12;  // engine.js와 같은 값. 이보다 적으면 같은 문제가 반복된다
 const MIN_SEEN = 3;   // 이만큼 안 나온 문제는 '약하다'고 부르지 않는다
-const WEEKDAY = ['일','월','화','수','목','금','토'];
 
+/* ⚠️ 이 화면의 상태는 **전부 여기 한 곳에** 둡니다.
+   아래쪽 구역에서 `let`으로 선언하고 위쪽 함수가 그걸 읽으면, 모듈 최상위가
+   ReferenceError로 멈추고 **화면 전체가 "불러오는 중…"에서 얼어붙습니다.**
+   ES 모듈이라 에러가 화면에도 안 뜹니다. 실제로 그렇게 한 번 죽었습니다(구현-현황 29장). */
 let ALL = {};                              // 제외 없이 지은 전체 문제 색인
+let WARN = new Map();                      // 팩마다 파일에서 읽다가 건너뛴 줄
+let ALLOW = null;                          // 용돈 설정
+let dirtyProg = false;                     // 진도에 저장 안 한 변경이 있나
+const DAYNAMES = ['일', '월', '화', '수', '목', '금', '토'];
 let PROFILE = null;
 let WISHDATA = null;   // 팩 목록을 받을 때 같이 실려 온다
 let OFF = { problems: [], packs: [] };
@@ -237,13 +244,18 @@ for (const e of Object.values(ALL)) if (!packNames.has(e.packId)) packNames.set(
 
 async function showStat() {
   const id = $('who').value;
-  if (!id) return;
+  if (!id) return noProfile('아직 아이가 없습니다. 아이 화면에서 먼저 이름을 지어주세요.');
+
   PROFILE = await store.loadProfile(id);
+  // 정적 배포에서는 프로필이 브라우저 안에 있습니다. 목록에는 있는데 알맹이가 없을 수 있습니다.
+  if (!PROFILE) return noProfile(`${esc(id)}의 기록을 찾지 못했습니다. ` +
+    '이 브라우저에서 논 적이 없거나 기록이 지워졌습니다. 아래 <b>되돌리기</b>로 살릴 수 있습니다.');
+
   OFF = { problems: [...(PROFILE.disabled?.problems || [])],
           packs: [...(PROFILE.disabled?.packs || [])] };
   if (WISHDATA) showWishes(WISHDATA);   // 아이를 바꾸면 소원권 목록도 따라간다
   showProgress();
-  if (typeof showAllowLog === 'function') showAllowLog();
+  showAllowLog();
   dirty = false;
 
   const p = PROFILE;
@@ -268,6 +280,16 @@ async function showStat() {
   else $('editor').innerHTML = '<p class="hint">위에서 팩을 고르세요.</p>';
 }
 
+/* 보여줄 아이가 없을 때. "불러오는 중…"을 남겨두면 부모는 영영 기다립니다. */
+function noProfile(msg) {
+  PROFILE = null;
+  $('stat').innerHTML = `<tr><td>${msg}</td></tr>`;
+  $('progress').innerHTML = `<p class="hint">${msg}</p>`;
+  $('weak').innerHTML = '<p class="hint">—</p>';
+  $('giveLog').innerHTML = '';
+  $('editor').innerHTML = '';
+}
+
 /* 연속 일수는 세지 않는다. 부모가 그 숫자를 보면 끊긴 날에 말이 나오고,
    그것이 원칙 2.1이 막으려던 실패 경험이 된다. 누적만 센다. */
 function showWeek() {
@@ -283,7 +305,7 @@ function showWeek() {
     const row = by.get(key);
     if (row) { sum.days++; sum.solved += row.solved || 0; sum.right += row.right || 0; sum.star += row.star || 0; }
     cells.push(`<div class="day${row ? '' : ' off'}" title="${key}">
-      <span>${WEEKDAY[d.getDay()]}</span><b>${row ? row.solved : '–'}</b></div>`);
+      <span>${DAYNAMES[d.getDay()]}</span><b>${row ? row.solved : '–'}</b></div>`);
   }
   $('week').innerHTML = cells.join('');
   $('weekSum').textContent =
@@ -447,7 +469,6 @@ function showProgress() {
   });
 }
 
-let dirtyProg = false;
 $('deepOn').onchange = () => { dirtyProg = true; $('msgProg').textContent = '저장을 눌러야 반영됩니다.'; };
 
 $('saveProg').onclick = async () => {
@@ -591,25 +612,38 @@ function openPack(packId) {
 
 addEventListener('beforeunload', e => { if (dirty || dirtyProg) { e.preventDefault(); e.returnValue = ''; } });
 
-$('who').onchange = showStat;
-await showStat();
+$('who').onchange = () => showStat().catch(boom);
+
+/* 한 군데가 넘어져도 나머지는 그려져야 합니다. 이 화면이 통째로 죽으면
+   부모는 "불러오는 중…"만 보고 무엇이 잘못됐는지 알 길이 없습니다. */
+function boom(e) {
+  console.error(e);
+  for (const id of ['stat', 'progress', 'weak', 'wishes'])
+    if ($(id).innerHTML.includes('불러오는 중')) $(id).innerHTML =
+      '<p class="warn">이 칸을 그리지 못했습니다. 새로고침해보시고, 그래도 안 되면 ' +
+      '브라우저 메뉴의 개발자 도구 → 콘솔에 찍힌 붉은 글씨를 알려주세요.</p>';
+}
+
+await showStat().catch(boom);
 
 /* ============ 문제 파일 읽기 ============ */
 
 /* 파일에서 읽다가 건너뛴 줄이 있으면 진도 목록에 빨간 글씨로 붙는다.
    예전에는 '문제 팩'이라는 칸이 따로 있었는데, 부모가 두 곳을 오가야 해서 합쳤다. */
-let WARN = new Map();
-
 async function showPacks() {
-  const res = await store.parentPacks($('pin').value);
-  if (res.error) { $('msgProg').textContent = res.error; return; }
+  const res = await store.parentPacks($('pin').value).catch(e => ({ error: String(e.message || e) }));
+  if (res.error) {
+    $('msgProg').textContent = res.error;
+    $('wishes').innerHTML = `<p class="hint">${esc(res.error)}</p>`;
+    return;
+  }
   WARN = new Map(res.packs.map(p => [p.id, p.warnings]));
   WISHDATA = res.wishes;
   showWishes(WISHDATA);
   showProgress();
 }
-showPacks();
-$('reload').onclick = showPacks;
+showPacks().catch(boom);
+$('reload').onclick = () => showPacks().catch(boom);
 
 /* ============ 풀 · 별 주기 ============ */
 
@@ -686,10 +720,7 @@ function showWishes(w) {
 
 /* ============ 용돈 ============ */
 
-const DAYNAMES = ['일', '월', '화', '수', '목', '금', '토'];
 $('allowDay').innerHTML = DAYNAMES.map((d, i) => `<option value="${i}">${d}</option>`).join('');
-
-let ALLOW = null;
 
 async function showAllowance() {
   const boot = await store.bootstrap();

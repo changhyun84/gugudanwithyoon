@@ -61,7 +61,7 @@ content/      problems/수학|한국사/*.csv · messages.csv · wishes.csv
 data/         자동 생성, git 제외
 sim/          60days.mjs (보상 균형) · repeat.mjs (문제 반복) · make-icons.py (아이콘)
               seed-math|history.py (문제 팩) · build-static.py (Pages 배포용 dist/)
-test/         t_book · t_shop · t_wish · t_allow · t_units · t_parent · t_backup · t_static  .mjs
+test/         t_book · t_shop · t_wish · t_allow · t_units · t_parent · t_parentrun · t_backup · t_static  .mjs
 ```
 
 `ai.py`는 6B에서 새로 생깁니다. **`server.py`에 합치지 마세요** — 외부 호출은 실패하는 코드라 격리합니다.
@@ -113,6 +113,7 @@ node test/t_wish.mjs       # 33개 — 배경·소원권. 받은 소원권이 �
 node test/t_allow.mjs      # 24개 — 용돈. 화폐가 풀인지, 주 1회인지
 node test/t_units.mjs      # 94개 — 과목·단원·진도·보기 품질·심화·반복·문제 파일 검산
 node test/t_parent.mjs     # 34개 — 부모 화면 정리·풀 별 주기·이름
+node test/t_parentrun.mjs  # 21개 — 부모 화면을 **실제로 실행**. 두 모드 다. 조용히 죽는 걸 잡는다
 node test/t_backup.mjs     # 34개 — 내보내기·되돌리기·PWA
 node test/t_static.mjs     # 53개 — 정적 배포. 두 모드가 갈라지지 않았는지
 node sim/60days.mjs 180    # 보상 균형. 가격표를 characters.js·backgrounds.js에서 그대로 읽는다
@@ -133,7 +134,9 @@ cp web/characters.js /tmp/ch.mjs && node --input-type=module -e "import('/tmp/ch
 
 `app.js`를 일괄 치환으로 수정할 때는 **치환 대상이 파일에 정확히 한 번만 있는지 확인**하세요. 한 번 범위를 잘못 잡아 파일이 깨진 적이 있습니다.
 
-`parent.html`이 `engine.js`에서 import하는 이름을 바꾸거나 지우면 **부모 화면 스크립트 전체가 조용히 죽습니다.** ES 모듈은 링크 단계에서 실패하고 에러도 화면에 안 보입니다. 잡아주던 테스트가 없으니, `engine.js`의 export를 건드렸으면 **부모 화면을 직접 열어보세요.**
+**부모 화면은 조용히 죽습니다.** ES 모듈이라 최상위에서 에러가 나면 그 아래가 통째로 안 돌고, 에러는 화면 어디에도 안 뜹니다. 부모가 보는 것은 `불러오는 중…` 넉 줄뿐입니다. 두 번 났습니다 — import 이름(2.12), 선언 순서(29장). 이제 **`node test/t_parentrun.mjs`가 실제로 실행해봅니다.** `parent.html`을 건드렸으면 이것부터 돌리세요.
+
+**모듈 최상위 상태(`let`/`const`)는 반드시 화면을 그리기 전에 선언하세요.** `let`은 끌어올려지지 않습니다 — 아래에 선언하고 위에서 읽으면 화면이 통째로 얼어붙습니다.
 
 ---
 

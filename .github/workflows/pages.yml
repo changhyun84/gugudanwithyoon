@@ -33,17 +33,23 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
-          node-version: '20'
+          node-version: '22'
 
       # 문제 파일이 깨졌으면 여기서 멈춘다. 아이에게 나가기 전에 잡는 게 낫다.
+      #
+      # 액션 버전 (2026-08-25 확인): 전부 node24로 도는 것들입니다.
+      #   checkout v7 · setup-python v7 · setup-node v7 · upload-pages-artifact v5 · deploy-pages v5
+      # GitHub이 "Node.js 20 is deprecated" 경고를 내면 그때 올리세요. 경고일 뿐 배포는 됩니다.
+      # upload-pages-artifact는 안에서 upload-artifact를 부르므로 **그것도 같이 올라갑니다** —
+      # v3을 쓰면 v4(Node 20)를 불러서 경고가 계속 납니다.
       - name: 검사
         run: |
           for t in test/*.mjs; do echo "--- $t"; node "$t"; done
@@ -51,7 +57,7 @@ jobs:
       - name: 빌드
         run: python3 sim/build-static.py
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: dist
 
@@ -63,4 +69,4 @@ jobs:
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - id: deploy
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
