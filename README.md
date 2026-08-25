@@ -42,10 +42,11 @@
 - Python 표준 라이브러리만 사용. 외부 패키지 없음
 - 데이터는 `data\profiles\*.json`. DB 없음. 원자적 저장 + 하루 1회 자동 백업(30일)
 - 문제는 `content\problems\*.csv|md`. 저장하면 새로고침만으로 반영
-- **수학 9단원 · 한국사 8단원 (614문제, 그중 심화 192).** 폴더 이름이 과목, 파일명 앞 `1-3`이 학기·단원
+- **수학 9 · 한국사 8 · 영어 8단원 (887문제, 그중 심화 273).** 폴더 이름이 과목, 파일명 앞 `1-3`이 학기·단원
+- **영어는 단어장 형식** — `단어,뜻` 한 줄이 문제 셋(뜻 알기·영어로 쓰기·철자 고르기)이 됨 (기획서 14.0)
 - CSV의 `난이도` 칸에 `심화`. 부모가 **기본 · 섞어 · 심화** 셋 중에 고름 (기획서 12.0)
 - 출제는 `묶음` 칸을 **유형**으로 보고 같은 유형이 연달아 안 나오게 누름 (기획서 11.5.1)
-- 부모가 `/parent`의 **학습 진도**에서 **낼 단원을 하나씩 체크**함. 처음엔 첫 단원만 열림
+- 부모가 `/parent`의 **학습 진도**에서 **낼 단원을 하나씩 체크**함. 처음 열리는 단원은 `engine.js`의 `START_UNITS`
 - 캐릭터 5종(양·고양이·토끼·코알라·카피바라)은 별로 해금. **아이템 48종** — 앵커 + 배율로 공용
 - 넷은 2026-08-19에 아기 비례로 다시 그렸습니다 (`구현-현황.md` 11장). **양은 손대지 마세요**
 - 부모는 `/parent`에서 최근 7일·어려워하는 문제를 보고, 문제를 **끌** 수 있음 (지우는 게 아님)
@@ -61,7 +62,7 @@ web/          app.js · store.js · engine.js · characters.js · backgrounds.js
 content/      problems/수학|한국사/*.csv · messages.csv · wishes.csv
 data/         자동 생성, git 제외
 sim/          60days.mjs (보상 균형) · repeat.mjs (문제 반복) · make-icons.py (아이콘)
-              seed-math|history.py (문제 팩) · build-static.py (Pages 배포용 dist/)
+              seed-math|history|english.py (문제 팩) · build-static.py (Pages 배포용 dist/)
 test/         t_book · t_shop · t_wish · t_allow · t_units · t_parent · t_parentrun · t_backup · t_static  .mjs
 ```
 
@@ -101,6 +102,8 @@ test/         t_book · t_shop · t_wish · t_allow · t_units · t_parent · t_
 - **부모가 아이 별·풀을 빼고 싶어할 때** → 잘못 준 것을 되돌릴 때만입니다. 벌로 쓰면 *틀려도 손해 없다*가 깨집니다 (기획서 8.10)
 - **AI 기능을 만들 때** → 이 질문 하나 — *키가 없거나 인터넷이 끊긴 상태에서 아이 화면이 평소와 똑같은가*
 - **답을 직접 쓰게 할 때** → 막힌 아이가 누를 것이 화면에 있는가 (「보기 보여줘」·「모르겠어」)
+- **영어 단어를 넣을 때** → `단어,뜻` 형식이면 문제 셋이 자동으로 생깁니다. 같은 파일에 **같은 단어나 같은 뜻이 둘 있으면 안 됩니다** (보기가 겹칩니다)
+- **아이 학기가 바뀔 때** → `engine.js`의 `START_UNITS`. 부모가 이미 진도를 저장했으면 부모 화면에서 체크하세요
 
 ---
 
@@ -113,7 +116,7 @@ node test/t_book.mjs       # 30개 — 도감. 판 보상이 줄어드는 경로
 node test/t_shop.mjs       # 43개 — 상점 단계·전용 아이템·다음 단계 미리보기
 node test/t_wish.mjs       # 33개 — 배경·소원권. 받은 소원권이 사라지지 않는지
 node test/t_allow.mjs      # 24개 — 용돈. 화폐가 풀인지, 주 1회인지
-node test/t_units.mjs      # 107개 — 과목·단원·진도·보기 품질·난이도·유형 반복·문제 파일 검산
+node test/t_units.mjs      # 132개 — 과목·단원·진도·보기 품질·난이도·유형 반복·영어 단어장·문제 파일 검산
 node test/t_parent.mjs     # 37개 — 부모 화면 정리·풀 별 주기·난이도·이름
 node test/t_parentrun.mjs  # 25개 — 부모 화면을 **실제로 실행**. 두 모드 다. 조용히 죽는 걸 잡는다
 node test/t_backup.mjs     # 34개 — 내보내기·되돌리기·PWA

@@ -68,11 +68,140 @@ def scan(folder):
     return packs
 
 
+# ── 단어장 (영어) ─────────────────────────────────────
+#
+# `단어,뜻` 한 줄이 **문제 세 개**가 된다. 부모가 단어만 적으면 되게 하려는 것이다.
+# 기획서 14장(사진으로 단어 등록)이 결국 이 형식으로 떨어지므로 형식을 먼저 만든다.
+#
+#   apple,사과   →  apple은 무슨 뜻일까?          → 사과      (기본)
+#                   '사과'를 영어로 쓰면?          → apple     (기본)
+#                   '사과'의 철자가 맞는 것은?     → apple     (심화)
+#
+# 세 문제는 **각각 따로 마스터**된다. 뜻을 아는 것과 철자를 아는 것은 다른 능력이다.
+
+WORD_HEADERS = {
+    'word': ['단어', 'word'],
+    'mean': ['뜻', 'meaning', '의미'],
+    'hint': ['힌트', 'hint'],
+}
+
+MIN_SPELL_LEN = 4   # 세 글자 이하는 철자 고르기가 의미 없다
+
+
+def is_wordlist(header):
+    def has(key):
+        return any(c.strip().lower() in WORD_HEADERS[key] for c in header)
+    return has('word') and has('mean')
+
+
+def parse_words(text, stem):
+    """단어장 CSV를 문제 행으로 펼친다. 반환 모양은 parse_csv와 같다."""
+    reader = csv.reader(io.StringIO(text))
+    header = next(reader, None)
+    if not header:
+        return stem, [], [f'{stem} — 파일이 비어 있습니다.']
+
+    col = {}
+    for i, cell in enumerate(header):
+        for key, names in WORD_HEADERS.items():
+            if cell.strip().lower() in names:
+                col[key] = i
+    get = lambda row, key: row[col[key]].strip() if key in col and col[key] < len(row) else ''
+
+    words, warnings = [], []
+    for n, row in enumerate(reader, start=2):
+        if not any(c.strip() for c in row):
+            continue
+        w, m = get(row, 'word'), get(row, 'mean')
+        if not w or not m:
+            warnings.append(f'{n}번째 줄 — 단어나 뜻이 비어 있어 건너뛰었습니다.')
+            continue
+        words.append((w, m, get(row, 'hint')))
+
+    seen_w, seen_m = set(), set()
+    for w, m, _ in words:
+        # 같은 파일에 같은 단어나 같은 뜻이 둘 있으면 보기를 만들 수 없다
+        if w.lower() in seen_w:
+            warnings.append(f'{w} — 같은 단어가 두 번 있습니다. 보기가 겹칩니다.')
+        if m in seen_m:
+            warnings.append(f'{m} — 같은 뜻이 두 번 있습니다. 보기가 겹칩니다.')
+        seen_w.add(w.lower())
+        seen_m.add(m)
+
+    all_words = [w for w, _, _ in words]
+    rows = []
+    for w, m, hint in words:
+        # 조사(은/는·을/를)를 안 쓴다. 영어 낱말 뒤의 조사는 **소리로 정해지는데**
+        # 철자만 보고는 알 수 없다. apple은? apple는? 둘 다 어색하다. 줄표로 피한다.
+        rows.append({
+            'question': f'{w} — 무슨 뜻일까?', 'answer': m,
+            'wrongs': [], 'hint': hint or f'첫소리는 "{chosung(m[0])}"',
+            'group': '뜻 알기', 'deep': False,
+        })
+        rows.append({
+            'question': f'"{m}" — 영어로 쓰면?', 'answer': w,
+            'wrongs': [], 'hint': f'첫 글자는 {w[0]}',
+            'group': '영어로 쓰기', 'deep': False,
+        })
+        if len(w.replace(' ', '')) >= MIN_SPELL_LEN:
+            rows.append({
+                'question': f'"{m}" — 철자가 맞는 것은?', 'answer': w,
+                'wrongs': misspell(w, 3, all_words),
+                'hint': f'글자 수는 {len(w.replace(" ", ""))}개야',
+                'group': '철자 고르기', 'deep': True,
+            })
+    return stem, rows, warnings
+
+
+CHO = 'ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ'
+
+
+def chosung(ch):
+    """'사' → 'ㅅ'. 뜻이 한 글자면(책·눈·코) 첫 글자를 알려주는 것이 곧 답을 알려주는 것이다."""
+    code = ord(ch) - 0xAC00
+    return CHO[code // 588] if 0 <= code < 11172 else ch
+
+
+VOWELS = 'aeiou'
+
+
+def misspell(word, need, avoid):
+    """아이가 실제로 하는 실수를 흉내 낸 가짜 철자.
+
+       바꿔치기 → 겹쳐쓰기 → 빠뜨리기 순서다. 모음 바꾸기는 **맨 뒤**에 둔다 —
+       hot/hat처럼 **진짜 낱말이 되어버릴 위험**이 가장 크기 때문이다.
+       첫 글자는 건드리지 않는다. 첫 글자가 다르면 아이가 내용을 안 보고 지워버린다."""
+    used = {word.lower(), *(a.lower() for a in avoid)}
+    out = []
+    letters = [i for i, c in enumerate(word) if c != ' ']
+
+    def add(cand):
+        if len(out) >= need or cand.lower() in used or cand == word:
+            return
+        used.add(cand.lower())
+        out.append(cand)
+
+    for i in letters[1:]:                       # 붙어 있는 두 글자 바꿔치기
+        j = i + 1
+        if j < len(word) and word[j] != ' ' and word[i] != word[j]:
+            add(word[:i] + word[j] + word[i] + word[j + 1:])
+    for i in letters[1:]:                       # 겹쳐쓰기
+        add(word[:i] + word[i] + word[i:])
+    for i in letters[1:]:                       # 빠뜨리기
+        add(word[:i] + word[i + 1:])
+    for i in letters[1:]:                       # 모음 바꾸기 (마지막 수단)
+        if word[i].lower() in VOWELS:
+            for v in VOWELS:
+                if v != word[i].lower():
+                    add(word[:i] + v + word[i + 1:])
+    return out[:need]
+
+
 def read_pack(path, pid, subject, order):
     """팩 id는 **파일명 슬러그만** 쓴다. 과목을 id에 넣으면 파일을 폴더로 옮기는 것만으로
        문제 키가 바뀌어 아이가 몇 달 쌓은 진도·마스터·스티커가 통째로 날아간다."""
     text, enc_warning = read_text(path)
-    parse = parse_csv if path.suffix.lower() == '.csv' else parse_md
+    parse = pick_parser(path, text)
     name, rows, warnings = parse(text, path.stem)
     problems, more = build_problems(rows, pid)
     unit = UNIT_RE.match(path.stem)
@@ -88,6 +217,14 @@ def read_pack(path, pid, subject, order):
         'problems': problems,
         'warnings': ([enc_warning] if enc_warning else []) + warnings + more,
     }
+
+
+def pick_parser(path, text):
+    """첫 줄을 보고 고른다. `단어,뜻`이면 단어장, 아니면 지금까지의 문제 파일."""
+    if path.suffix.lower() != '.csv':
+        return parse_md
+    header = next(csv.reader(io.StringIO(text)), None)
+    return parse_words if header and is_wordlist(header) else parse_csv
 
 
 CHAR_NAMES = {'양': 'sheep', '고양이': 'cat', '토끼': 'rabbit', '코알라': 'koala',

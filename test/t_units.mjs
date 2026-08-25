@@ -126,6 +126,7 @@ print(json.dumps([{k: p[k] for k in ('id','name','subject','unit','order','count
 const bySub = s => real.filter(p => p.subject === s);
 ok('수학 9단원', bySub('수학').length === 9);
 ok('한국사 8단원', bySub('한국사').length === 8);
+ok('영어 8단원', bySub('영어').length === 8);
 ok('전부 단원 번호가 있다 — 진도 관리 대상이다',
   real.every(p => p.subject && p.unit));
 ok('문제가 하나도 안 빠졌다 (경고 0)', real.every(p => !p.warnings.length));
@@ -134,6 +135,8 @@ ok('수학이 1-3부터 2-5까지 순서대로',
   bySub('수학').map(p => p.unit).join(' ') === '1-3 1-4 1-5 1-6 2-1 2-2 2-3 2-4 2-5');
 ok('한국사가 1-1부터 2-3까지 순서대로',
   bySub('한국사').map(p => p.unit).join(' ') === '1-1 1-2 1-3 1-4 1-5 2-1 2-2 2-3');
+ok('영어가 1-1부터 2-4까지 순서대로',
+  bySub('영어').map(p => p.unit).join(' ') === '1-1 1-2 1-3 1-4 2-1 2-2 2-3 2-4');
 
 /* 수학은 손으로 쓰지 않고 계산해서 만든다. 답이 틀리면 아이가 맞게 답하고 틀린 것이 된다. */
 const mathCheck = execFileSync('python3', ['-c', `
@@ -154,6 +157,86 @@ for f in pathlib.Path('content/problems/수학').glob('*.csv'):
                 if want is None or str(want) != a: bad += 1
 print(bad)`], { cwd: ROOT, encoding: 'utf8' }).trim();
 ok('수학 계산이 전부 맞다 (독립으로 다시 계산)', mathCheck === '0');
+
+/* ── 응원 메시지 (2026-08-25) ── */
+group('고양이 말투 — 시크하지만 친절한 츤데레');
+
+const msg = JSON.parse(execFileSync('python3', ['-c', `
+import json, pathlib, packs
+m, w = packs.scan_messages(pathlib.Path('content/messages.csv'))
+print(json.dumps({'m': m, 'w': w}, ensure_ascii=False))`], { cwd: ROOT, encoding: 'utf8' }));
+
+ok('메시지 파일에 경고가 없다', !msg.w.length);
+const cat = msg.m.cat || {};
+ok('고양이가 여덟 가지 상황에 다 말한다',
+  ['시작', '정답', '힌트정답', '오답', '마스터', '새아이템', '오랜만', '끝']
+    .every(k => (cat[k] || []).length));
+
+const catAll = Object.values(cat).flat();
+ok(`고양이 말 ${catAll.length}줄이 전부 "옹"으로 끝난다`,
+  catAll.every(t => /(옹|야옹)[.!?]?$/.test(t.trim())));
+
+/* 원칙 2.1 — 츤데레라도 아이를 깎는 말은 안 된다. 틀린 것을 나무라는 말이 있으면 안 된다. */
+const mean = catAll.filter(t => /바보|멍청|틀렸잖|또 틀|이것도 몰라|쉬운 건데|실망/.test(t));
+ok('아이를 깎는 말이 없다', !mean.length);
+if (mean.length) console.log('     ', mean.join(' / '));
+
+ok('오답에서는 정답을 알려준다', (cat['오답'] || []).every(t => t.includes('{정답}')));
+
+/* ── 영어 단어장 (2026-08-25) ── */
+group('영어 — 단어 한 줄이 문제 세 개가 되는가');
+
+const wordCheck = execFileSync('python3', ['-c', `
+import csv, json, pathlib, packs
+words, means = set(), set()
+for f in pathlib.Path('content/problems/영어').glob('*.csv'):
+    for r in csv.DictReader(f.open(encoding='utf-8')):
+        words.add(r['단어'].lower()); means.add(r['뜻'])
+out = {'words': len(words), 'means': len(means), 'packs': [], 'fake_is_real': [], 'dup': []}
+for p in packs.scan(pathlib.Path('content/problems')):
+    if p['subject'] != '영어': continue
+    g = {}
+    for q in p['problems']:
+        g[q['group']] = g.get(q['group'], 0) + 1
+        if len(set(q['choices'])) != 4: out['dup'].append(q['prompt'])
+        if q['group'] == '철자 고르기':
+            for c in q['choices']:
+                if c != q['answer'] and c.lower() in words: out['fake_is_real'].append(c)
+    out['packs'].append(g)
+print(json.dumps(out, ensure_ascii=False))`], { cwd: ROOT, encoding: 'utf8' });
+const W = JSON.parse(wordCheck);
+
+ok(`단어 ${W.words}개 — 겹치는 단어 없음`, W.words === 96);
+ok(`뜻 ${W.means}개 — 겹치는 뜻 없음`, W.means === 96);
+ok('모든 단원에 세 유형이 다 있다',
+  W.packs.every(g => g['뜻 알기'] && g['영어로 쓰기'] && g['철자 고르기']));
+ok('뜻 알기와 영어로 쓰기는 단어 수만큼 있다',
+  W.packs.every(g => g['뜻 알기'] === 12 && g['영어로 쓰기'] === 12));
+ok('보기가 겹치는 문제가 없다', !W.dup.length);
+
+/* 가짜 철자가 **다른 진짜 단어**면 안 된다. 틀린 답을 고르고도 진짜 단어를 본 셈이 된다. */
+ok(`가짜 철자가 진짜 단어인 경우 ${W.fake_is_real.length}건`, !W.fake_is_real.length);
+if (W.fake_is_real.length) console.log('     ', W.fake_is_real.slice(0, 6).join(', '));
+
+/* 힌트가 답을 그대로 말해버리면 힌트가 아니다. 뜻이 한 글자면(책·눈) 첫 글자가 곧 답이다. */
+const leak = execFileSync('python3', ['-c', `
+import json, re, pathlib, packs
+bad = [q['prompt'] for p in packs.scan(pathlib.Path('content/problems')) for q in p['problems']
+       if len(q['answer']) >= 2 and not re.fullmatch(r'[\\d.]+', q['answer']) and q['answer'] in q['hint']]
+print(json.dumps(bad, ensure_ascii=False))`], { cwd: ROOT, encoding: 'utf8' });
+ok('힌트가 정답을 그대로 말하는 문제가 없다', JSON.parse(leak).length === 0);
+
+const spell = execFileSync('python3', ['-c', `
+import json, packs
+print(json.dumps({w: packs.misspell(w, 3, []) for w in
+      ['apple', 'eight', 'rabbit', 'cat', 'thank you']}, ensure_ascii=False))`],
+  { cwd: ROOT, encoding: 'utf8' });
+const M = JSON.parse(spell);
+ok('가짜 철자를 세 개씩 만든다', Object.values(M).every(v => v.length === 3));
+ok('첫 글자는 안 건드린다 — 첫 글자가 다르면 보지도 않고 지운다',
+  Object.entries(M).every(([w, v]) => v.every(x => x[0] === w[0])));
+ok('원래 낱말과 같은 것은 없다', Object.entries(M).every(([w, v]) => !v.includes(w)));
+ok('빈칸을 넘는 낱말도 다룬다', M['thank you'].every(x => x.includes(' ')));
 
 /* ── 보기 품질 (2026-08-24) ── */
 group('보기 넷이 같은 모양인가 — 계산 안 하고 고를 수 있으면 안 됩니다');
@@ -244,6 +327,28 @@ ok('1-10까지 열면 1-2·1-3도 같이', opened({ 수학: '1-10' }) === 'extra
 ok('과목마다 따로', opened({ 한국사: '1-2' }) === 'extra,flat,gugudan,h1,h2,m1');
 ok('진도를 되돌리면 다시 닫힌다 — 사라지는 것은 없다(16.4)',
   opened({ 수학: '1-1' }) === 'extra,flat,gugudan,h1,m1');
+
+/* ── 진도를 한 번도 안 정했을 때 (2026-08-25) ── */
+group('시작 단원 — 부모가 아이 학교 진도에 맞춰 정한 값');
+
+ok('수학은 2-3과 2-4', E.START_UNITS['수학'].join() === '2-3,2-4');
+ok('한국사는 1-3과 1-4', E.START_UNITS['한국사'].join() === '1-3,1-4');
+
+const realOpen = [...E.openPacks(real.map(p => ({ ...p })), null)].sort();
+ok(`실제 파일로 열리는 것 — ${realOpen.join(' · ')}`,
+  realOpen.join(',') === '1-1-인사와-나,1-3-삼국의-시작,1-4-삼국의-전성기,2-3-원,2-4-분수,gugudan');
+ok('목록에 없는 과목(영어)은 첫 단원만', realOpen.includes('1-1-인사와-나'));
+
+const START = [
+  pack('a1', '수학', '1-1', 0), pack('a2', '수학', '2-3', 1), pack('a3', '수학', '2-4', 2),
+  pack('b1', '과학', '1-1', 0), pack('b2', '과학', '1-2', 1),
+];
+ok('시작 단원이 있는 과목은 그것만',
+  ['a2', 'a3'].every(id => E.openPacks(START, null).has(id)) && !E.openPacks(START, null).has('a1'));
+ok('시작 단원이 없는 과목은 첫 단원만',
+  E.openPacks(START, null).has('b1') && !E.openPacks(START, null).has('b2'));
+ok('부모가 한 번 정하면 시작 단원은 더 안 끼어든다',
+  [...E.openPacks(START, { units: ['a1'] })].sort().join() === 'a1');
 
 /* ── 고른 단원만 켜기 (2026-08-24) ── */
 group('진도 — 고른 단원만 켜기');

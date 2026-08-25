@@ -44,6 +44,16 @@ function natCmp(a, b) {
 
 const EVERY = Symbol('모든 단원');
 
+/* 진도를 한 번도 안 정한 아이가 시작하는 지점.
+   **부모가 아이 학교 진도에 맞춰 정한 값입니다** — 학기가 바뀌면 여기를 고치세요.
+   목록에 없는 과목은 그 과목의 첫 단원만 열립니다.
+
+   파일 이름이 아니라 **단원 번호**로 적습니다. 파일 이름을 바꿔도 안 깨집니다. */
+export const START_UNITS = {
+  수학:   ['2-3', '2-4'],
+  한국사: ['1-3', '1-4'],
+};
+
 /* 심화 문제를 기본 뒤로 미는 폭. 한 단원에 기본이 이만큼 있을 리 없는 값이면 된다.
    출제는 아래 openKeys()가 기본·심화를 따로 열지만, 부모 화면의 문제 목록은
    이 순서를 그대로 쓰므로 기본이 먼저 보인다. */
@@ -98,8 +108,14 @@ export function openPacks(packs = [], progress = null) {
   for (const [subject, list] of Object.entries(bySubject)) {
     list.sort((a, b) => (a.order || 0) - (b.order || 0));
     const upto = progress?.[subject];
-    if (!upto) { open.add(list[0].id); continue; }
-    for (const p of list) if (natCmp(p.unit, upto) <= 0) open.add(p.id);
+    if (upto) {                                       // 예전 "여기까지"
+      for (const p of list) if (natCmp(p.unit, upto) <= 0) open.add(p.id);
+      continue;
+    }
+    // 한 번도 안 정했다 — 시작 단원. 그 과목이 목록에 없으면 첫 단원만.
+    const want = START_UNITS[subject];
+    const picked = want ? list.filter(p => want.includes(p.unit)) : [];
+    (picked.length ? picked : [list[0]]).forEach(p => open.add(p.id));
   }
   return open;
 }
