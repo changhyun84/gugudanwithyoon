@@ -301,7 +301,10 @@ function homeHint() {
 function renderHome() {
   const done = P.daily.solved, pct = Math.min(100, done / goal() * 100);
   const finished = done >= goal();
-  const learned = TARGETS.filter(f => P.facts[factKey(f[0], f[1])].m >= 3).length;
+  /* 부모가 난이도를 '심화'로 두면 구구단이 색인에서 빠진다. 그러면 이 fact들도 없다 —
+     새로 시작한 아이는 `.m`을 읽는 순간 홈 화면이 통째로 안 그려진다. */
+  const learned = TARGETS.filter(f => (P.facts[factKey(f[0], f[1])]?.m ?? 0) >= 3).length;
+  const guguOn = TARGETS.some(f => factKey(f[0], f[1]) in INDEX);
   const extra = P.totals.mastered > learned ? ` &nbsp;·&nbsp; 완전히 외운 것 ${P.totals.mastered}` : '';
 
   app.innerHTML = topbar(false) +
@@ -331,7 +334,7 @@ function renderHome() {
     '</div>' +
     (WISHES.length ? '<button class="btn soft mt" data-go="wish">소원권</button>' : '') +
     (allowanceDay() ? '<button class="btn sun mt" data-go="money">오늘 용돈 바꾸는 날!</button>' : '') +
-    `<p class="sub center mt2">구구단 ${learned} / ${TARGETS.length}${extra} &nbsp;·&nbsp; 함께한 날 ${P.totals.daysPlayed}일</p>` +
+    `<p class="sub center mt2">${guguOn ? `구구단 ${learned} / ${TARGETS.length}${extra} &nbsp;·&nbsp; ` : ''}함께한 날 ${P.totals.daysPlayed}일</p>` +
     homeHint();
 
   const hide = app.querySelector('#hinthide');

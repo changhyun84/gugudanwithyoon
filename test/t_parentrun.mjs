@@ -138,6 +138,11 @@ for (const id of ['stat', 'progress', 'weak', 'wishes'])
   ok(`#${id}이(가) "불러오는 중…"에서 벗어난다`, !A.text(id).includes('불러오는 중'));
 
 ok('진도에 단원 체크박스가 그려진다', /data-unit=/.test(A.text('progress')));
+ok('난이도 세 가지가 그려진다',
+  ['기본', '섞어', '심화'].every(v => A.text('levels').includes(`data-level="${v}"`)));
+ok('고른 난이도가 표시된다', /class="soft on" data-level="섞어"/.test(A.text('levels')));
+ok('난이도가 무엇을 뜻하는지 적혀 있다', A.text('levelWhy').length > 10);
+ok('낼 수 있는 문제 수를 보여준다', /낼 수 있는 문제|낼 문제가 하나도/.test(A.text('pool')));
 ok('진도에 과목 이름이 나온다', /수학|한국사/.test(A.text('progress')));
 ok('현황에 아이 정보가 채워진다', A.text('stat').includes('양 이름'));
 ok('소원권 목록이 그려진다', A.text('wishes').length > 0);

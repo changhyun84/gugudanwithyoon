@@ -44,8 +44,23 @@ function natCmp(a, b) {
 
 const EVERY = Symbol('모든 단원');
 
-/* 심화 문제를 기본 뒤로 미는 폭. 한 단원에 기본이 이만큼 있을 리 없는 값이면 된다. */
+/* 심화 문제를 기본 뒤로 미는 폭. 한 단원에 기본이 이만큼 있을 리 없는 값이면 된다.
+   출제는 아래 openKeys()가 기본·심화를 따로 열지만, 부모 화면의 문제 목록은
+   이 순서를 그대로 쓰므로 기본이 먼저 보인다. */
 const DEEP_OFFSET = 10000;
+
+/* 난이도 — 부모가 고른다 (기획서 12.0).
+     기본   심화를 아예 안 낸다
+     섞어   기본을 주로 내되 심화도 같이 연다  ← 기본값
+     심화   심화만 낸다
+   예전 프로필의 `deep: false`는 '기본'으로 읽는다. */
+export const LEVELS = ['기본', '섞어', '심화'];
+
+export function levelOf(progress) {
+  const v = progress?.level;
+  if (LEVELS.includes(v)) return v;
+  return progress?.deep === false ? '기본' : '섞어';
+}
 
 /* 지금 열려 있는 팩 id들.
 
@@ -108,35 +123,39 @@ export function buildIndex(packs = [], disabled = null, progress = null) {
   /* 내장 구구단은 수학 폴더가 있으면 그 과목 안에 들어간다 — 자유 모드에서 따로 떨어져 있으면
      아이 눈에 이상하다. 단원 번호가 없으므로 진도와 상관없이 **늘 열려 있다**(openPacks). */
   const guguSubject = packs.some(p => p.subject === GUGUDAN_SUBJECT) ? GUGUDAN_SUBJECT : null;
+  const level = levelOf(progress);
 
-  if (!offP.has(GUGUDAN) && open.has(GUGUDAN)) {
+  /* 난이도는 구구단에도 적용된다. 구구단에는 심화가 없으므로 '심화'를 고르면 통째로 빠진다.
+     "심화만 나오기"를 골랐는데 화면의 절반이 구구단이면 그 설정은 거짓말이 된다.
+     구구단을 계속 내고 싶으면 '섞어'를 고르거나 진도에서 켜두면 된다. */
+  if (!offP.has(GUGUDAN) && open.has(GUGUDAN) && level !== '심화') {
     TARGETS.forEach(([a, b], i) => {
       const key = factKey(a, b);
       if (offQ.has(key)) return;
       index[key] = { packId: GUGUDAN, packName: '구구단', subject: guguSubject, unit: null, order: i,
-                     mul: [a, b], gated: true, rewardable: true, start: 0 };
+                     group: '구구단', mul: [a, b], gated: true, rewardable: true, start: 0 };
     });
     EASY.forEach(([a, b], i) => {
       const key = factKey(a, b);
       if (offQ.has(key)) return;
       index[key] = { packId: GUGUDAN, packName: '구구단', subject: guguSubject, unit: null, order: 100 + i,
-                     mul: [a, b], gated: false, rewardable: false, start: 2 };
+                     group: '쉬운 구구단', mul: [a, b], gated: false, rewardable: false, start: 2 };
     });
   }
 
-  // 부모가 심화를 껐으면 심화 문제는 아예 색인에 안 들어간다. 기본만 남는다.
-  const noDeep = progress?.deep === false;
 
   packs.forEach(pack => {
     if (offP.has(pack.id) || !open.has(pack.id)) return;
     pack.problems.forEach(q => {
       if (offQ.has(q.key)) return;
-      if (noDeep && q.deep) return;
+      if (level === '기본' && q.deep) return;
+      if (level === '심화' && !q.deep) return;
       /* 심화는 그 팩의 기본을 다 지나간 뒤에 열린다. 순서만 뒤로 밀면
          NEW_AT_ONCE가 이미 하고 있는 일이 그대로 적용된다 — 규칙을 새로 만들지 않는다. */
       index[q.key] = { packId: pack.id, packName: pack.name,
                        subject: pack.subject || null, unit: pack.unit || null,
                        order: q.order + (q.deep ? DEEP_OFFSET : 0), deep: !!q.deep,
+                       group: q.group || '',
                        prompt: q.prompt, answer: q.answer, choices: q.choices, hint: q.hint,
                        gated: true, rewardable: true, start: 0 };
     });
@@ -144,7 +163,7 @@ export function buildIndex(packs = [], disabled = null, progress = null) {
 
   // 부모가 실수로 전부 꺼도 아이 화면이 빈 채로 멈추면 안 된다 — 전부 무시하고 다시 짓는다.
   // 무언가를 실제로 걸렀을 때만. 안 그러면 buildIndexAll이 자기를 다시 불러 무한히 돈다.
-  const filtered = offQ.size || offP.size || open.size < packs.length;
+  const filtered = offQ.size || offP.size || open.size < packs.length || level !== '섞어';
   if (!Object.keys(index).length && filtered) return buildIndexAll(packs);
 
   return index;
@@ -179,6 +198,9 @@ export function seedFacts(index, facts) {
 const NEW_AT_ONCE = 5;
 const MIN_POOL = 12;
 
+/* 섞어 모드에서 기본과 **같이** 여는 심화 수. 기본 5에 심화 2면 대략 셋 중 하나가 심화다. */
+const DEEP_AT_ONCE = 2;
+
 /* 자유 모드에서 무엇을 낼지 — 팩 하나이거나 과목 전체다.
    문자열을 넘기면 팩 하나로 본다(예전 호출부와 호환). */
 const asPick = p => (typeof p === 'string' ? { pack: p } : p) || null;
@@ -190,18 +212,31 @@ function openKeys(index, facts, pick) {
   const byPack = {};
   for (const [key, e] of Object.entries(index)) {
     if (!e.gated || !inPick(e, pick)) continue;
-    (byPack[e.packId] ||= []).push([key, e.order]);
+    const b = (byPack[e.packId] ||= { base: [], deep: [] });
+    (e.deep ? b.deep : b.base).push([key, e.order]);
   }
 
   const open = new Set();
   const waiting = [];   // 아직 안 연 문제 — 풀이 모자랄 때 순서대로 꺼낸다
-  for (const list of Object.values(byPack)) {
-    list.sort((x, y) => x[1] - y[1]);
-    let n = 0;
-    for (const [key] of list) {
-      if (facts[key].m >= 3) continue;
-      if (n < NEW_AT_ONCE) { open.add(key); n++; }
-      else if (facts[key].m === 0) waiting.push(key);
+
+  for (const b of Object.values(byPack)) {
+    /* 기본과 심화를 **따로** 연다. 예전에는 심화를 순서에서 뒤로 밀기만 해서,
+       그 단원의 기본을 다 지나기 전에는 심화가 한 문제도 안 나왔다.
+       부모가 "초반이 너무 쉽다"고 한 것이 이것이다 (구현-현황 30장).
+
+       심화만 고른 경우에는 기본 목록이 비어 있으므로 심화가 기본 자리를 그대로 쓴다. */
+    const lanes = b.base.length
+      ? [[b.base, NEW_AT_ONCE], [b.deep, DEEP_AT_ONCE]]
+      : [[b.deep, NEW_AT_ONCE]];
+
+    for (const [list, cap] of lanes) {
+      list.sort((x, y) => x[1] - y[1]);
+      let n = 0;
+      for (const [key] of list) {
+        if (facts[key].m >= 3) continue;
+        if (n < cap) { open.add(key); n++; }
+        else if (facts[key].m === 0) waiting.push(key);
+      }
     }
   }
 
@@ -224,9 +259,19 @@ function poolSize(index, facts, pick, open) {
    17.5배에서는 새로 연 몇 개가 화면을 독차지해서 "같은 문제만 나온다"가 됩니다. */
 const WEIGHT = { 0: 8, 1: 6, 2: 4.5, 3: 3.5, 4: 2.5 };
 
+/* 자신감용 문제(쉬운 구구단)를 누르는 정도.
+
+   2·5·9단은 규칙이 있어 이미 아는 것이고 **별도 안 줍니다**(isRewardable). 그런데 21문제나 있어서
+   출제의 35%를 차지하고 있었습니다 — 화면의 셋 중 하나가 이미 아는 것이었다는 뜻입니다.
+   부모가 "초반이 너무 쉽다"고 한 것의 절반이 이것이었습니다 (구현-현황 30장).
+
+   **없애지는 않습니다.** 기획서 4장의 자신감용이라 다섯에 하나쯤은 쉬운 것이 와야 합니다. */
+const EASY_DAMP = 0.3;
+
 function weightOf(key, entry, fact, open, today) {
   if (entry.gated && fact.m === 0 && !open.has(key)) return 0;   // 아직 안 연 것은 잠금
-  const base = WEIGHT[fact.m];
+  let base = WEIGHT[fact.m];
+  if (!entry.rewardable) base *= EASY_DAMP;
   const rested = fact.lastSeenDay && daysBetween(fact.lastSeenDay, today) >= 3;
   return rested ? base * 1.5 : base;
 }
@@ -235,9 +280,26 @@ function daysBetween(a, b) {
   return Math.round((new Date(b) - new Date(a)) / 86400000);
 }
 
+/* 같은 **유형**이 연달아 나오지 않게 누른다.
+
+   `묶음` 칸(길이 바꾸기 · 나눗셈 문장제 · 왜 그랬을까 …)이 곧 유형이다.
+   그동안 색인에 싣지도 않고 있었고, 그래서 300문제를 뽑으면 **45%가 앞 문제와 같은 묶음**,
+   같은 유형이 최대 7번 이어졌다. 아이 눈에는 그게 "또 이거"다 (구현-현황 30장).
+
+   빼버리지 않고 **누르기만** 한다. 묶음이 하나뿐인 팩(구구단)에서 뺐다가는 낼 게 없어진다. */
+const SAME_GROUP = 0.15;   // 바로 앞 문제와 같은 묶음
+const NEAR_GROUP = 0.45;   // 최근 세 문제 안에 있던 묶음
+
+function groupPenalty(entry, lastGroups) {
+  if (!entry.group || !lastGroups.length) return 1;
+  if (entry.group === lastGroups[lastGroups.length - 1]) return SAME_GROUP;
+  return lastGroups.includes(entry.group) ? NEAR_GROUP : 1;
+}
+
 export function pickKey(index, facts, recent, today, want = null) {
   const pick = asPick(want);
   const open = openKeys(index, facts, pick);
+  const lastGroups = recent.slice(-3).map(k => index[k]?.group).filter(Boolean);
 
   const build = skip => {
     const pool = [];
@@ -245,7 +307,7 @@ export function pickKey(index, facts, recent, today, want = null) {
     for (const [key, entry] of Object.entries(index)) {
       if (skip.includes(key)) continue;
       if (!inPick(entry, pick)) continue;
-      const w = weightOf(key, entry, facts[key], open, today);
+      const w = weightOf(key, entry, facts[key], open, today) * groupPenalty(entry, lastGroups);
       if (w > 0) { pool.push([key, w]); total += w; }
     }
     return { pool, total };

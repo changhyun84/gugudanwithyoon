@@ -277,11 +277,76 @@ const DEEPPACKS = [{
   ],
 }];
 const dIdx = E.buildIndex(DEEPPACKS, null, { units: ['d1'] });
-ok('심화도 기본으로는 색인에 들어간다', 'd1:b' in dIdx);
-ok('심화는 기본보다 뒤에 온다 — 기본을 지나야 열린다', dIdx['d1:b'].order > dIdx['d1:a'].order);
+ok('기본값(섞어)에서는 둘 다 색인에 들어간다', 'd1:a' in dIdx && 'd1:b' in dIdx);
+ok('부모 화면 목록에서는 심화가 뒤에 온다', dIdx['d1:b'].order > dIdx['d1:a'].order);
 ok('심화 표시가 남는다', dIdx['d1:b'].deep === true && !dIdx['d1:a'].deep);
-const noDeep = E.buildIndex(DEEPPACKS, null, { units: ['d1'], deep: false });
-ok('심화를 끄면 색인에서 빠진다', !('d1:b' in noDeep) && ('d1:a' in noDeep));
+
+/* ── 난이도 세 가지 (2026-08-25) ── */
+group('난이도 — 기본 · 섞어 · 심화');
+
+const at = lv => E.buildIndex(DEEPPACKS, null, { units: ['d1'], level: lv });
+ok('기본을 고르면 심화가 빠진다', !('d1:b' in at('기본')) && ('d1:a' in at('기본')));
+ok('심화를 고르면 기본이 빠진다', ('d1:b' in at('심화')) && !('d1:a' in at('심화')));
+ok('섞어를 고르면 둘 다 나온다', ('d1:a' in at('섞어')) && ('d1:b' in at('섞어')));
+
+const withGugu = lv => E.buildIndex(DEEPPACKS, null, { units: ['d1', 'gugudan'], level: lv });
+ok('구구단은 심화가 없어서 심화 모드에서 통째로 빠진다',
+  !Object.keys(withGugu('심화')).some(k => k.startsWith('gugudan:')) &&
+  Object.keys(withGugu('섞어')).some(k => k.startsWith('gugudan:')));
+
+ok('예전 프로필의 deep:false는 기본으로 읽는다', E.levelOf({ deep: false }) === '기본');
+ok('아무것도 안 정했으면 섞어', E.levelOf(null) === '섞어' && E.levelOf({}) === '섞어');
+ok('모르는 값이 들어와도 섞어로 떨어진다', E.levelOf({ level: '어려움' }) === '섞어');
+ok('이름 세 가지를 밖으로 내보낸다', E.LEVELS.join() === '기본,섞어,심화');
+
+/* 섞어에서 심화가 **기본을 다 마치기 전에도** 나와야 한다.
+   예전에는 순서에서 뒤로 밀기만 해서 초반에 한 문제도 안 나왔다 — 그게 "초반이 쉽다"였다. */
+const MANY = [{
+  id: 'm', subject: '수학', unit: '1-1', order: 0, name: 'm',
+  problems: [
+    ...Array.from({ length: 20 }, (_, i) => ({ key: `m:b${i}`, order: i, prompt: `b${i}`,
+      answer: '1', choices: ['1', '2', '3', '4'], hint: '', group: `g${i % 4}` })),
+    ...Array.from({ length: 10 }, (_, i) => ({ key: `m:d${i}`, order: i, deep: true, prompt: `d${i}`,
+      answer: '1', choices: ['1', '2', '3', '4'], hint: '', group: `h${i % 3}` })),
+  ],
+}];
+const mIdx = E.buildIndex(MANY, { problems: [], packs: ['gugudan'] }, { units: ['m'], level: '섞어' });
+const mFacts = {}; E.seedFacts(mIdx, mFacts);
+const early = new Set();
+{
+  const recent = [];
+  for (let i = 0; i < 200; i++) {
+    const k = E.pickKey(mIdx, mFacts, recent, '2026-08-25');
+    early.add(k); recent.push(k); if (recent.length > 12) recent.shift();
+  }
+}
+ok('섞어에서 심화가 처음부터 나온다', [...early].some(k => k.startsWith('m:d')));
+ok('그래도 기본이 더 많이 열린다',
+  [...early].filter(k => k.startsWith('m:b')).length > [...early].filter(k => k.startsWith('m:d')).length);
+
+/* ── 유형이 연달아 나오지 않는가 ── */
+group('같은 유형이 연달아 나오지 않는가 (묶음)');
+
+ok('묶음이 색인에 실린다', mIdx['m:b0'].group === 'g0');
+ok('구구단에도 묶음이 있다',
+  Object.values(E.buildIndex([], null, null)).every(e => e.group));
+
+{
+  const facts = {}; E.seedFacts(mIdx, facts);
+  const recent = [], seq = [];
+  for (let i = 0; i < 300; i++) {
+    const k = E.pickKey(mIdx, facts, recent, '2026-08-25');
+    seq.push(k); recent.push(k); if (recent.length > 12) recent.shift();
+  }
+  let same = 0, run = 1, maxRun = 1;
+  for (let i = 1; i < seq.length; i++) {
+    if (mIdx[seq[i - 1]].group === mIdx[seq[i]].group) { same++; run++; maxRun = Math.max(maxRun, run); }
+    else run = 1;
+  }
+  const pct = Math.round(same / (seq.length - 1) * 100);
+  ok(`앞 문제와 같은 유형이 ${pct}% — 20% 아래`, pct < 20);
+  ok(`같은 유형이 이어지는 길이 ${maxRun} — 4 아래`, maxRun < 4);
+}
 
 /* ── 색인 ── */
 group('색인');

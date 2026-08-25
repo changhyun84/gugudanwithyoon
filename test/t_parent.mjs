@@ -69,7 +69,11 @@ if (noId.length) console.log('     없는 id:', noId.join(', '));
 group('진도 저장');
 
 ok('고른 단원 목록으로 저장한다', /fresh\.progress = \{ units/.test(HTML));
-ok('심화 여부도 같이 저장한다', /deep: \$\('deepOn'\)\.checked/.test(HTML));
+ok('난이도도 같이 저장한다', /fresh\.progress = \{ units, level \}/.test(HTML));
+ok('난이도 세 가지를 engine.js에서 받아 쓴다 — 이름을 두 곳에 두면 어긋난다',
+  /import \{[^}]*\bLEVELS\b/.test(HTML) && HTML.includes('LEVELS.map'));
+ok('심화만 고르면 무엇이 빠지는지 말해준다', HTML.includes('구구단은 안 나옵니다'));
+ok('낼 수 있는 문제가 적으면 알려준다', /같은 문제가 자주 돌아옵니다/.test(HTML));
 ok('저장할 때 프로필을 다시 받아 얹는다 (2.11)',
   /store\.loadProfile\(PROFILE\.id\)[\s\S]{0,400}saveProfile\(fresh\)/.test(HTML));
 ok('팩 단위 끄기는 진도로 합쳐졌다 — 겹치면 부모가 이유를 알 수 없다',
