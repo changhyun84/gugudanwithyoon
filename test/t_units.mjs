@@ -126,7 +126,7 @@ print(json.dumps([{k: p[k] for k in ('id','name','subject','unit','order','count
 const bySub = s => real.filter(p => p.subject === s);
 ok('수학 9단원', bySub('수학').length === 9);
 ok('한국사 8단원', bySub('한국사').length === 8);
-ok('영어 8단원', bySub('영어').length === 8);
+ok('영어 1단원 — 아이가 실제로 외우는 주차 단어장', bySub('영어').length === 1);
 ok('전부 단원 번호가 있다 — 진도 관리 대상이다',
   real.every(p => p.subject && p.unit));
 ok('문제가 하나도 안 빠졌다 (경고 0)', real.every(p => !p.warnings.length));
@@ -135,8 +135,7 @@ ok('수학이 1-3부터 2-5까지 순서대로',
   bySub('수학').map(p => p.unit).join(' ') === '1-3 1-4 1-5 1-6 2-1 2-2 2-3 2-4 2-5');
 ok('한국사가 1-1부터 2-3까지 순서대로',
   bySub('한국사').map(p => p.unit).join(' ') === '1-1 1-2 1-3 1-4 1-5 2-1 2-2 2-3');
-ok('영어가 1-1부터 2-4까지 순서대로',
-  bySub('영어').map(p => p.unit).join(' ') === '1-1 1-2 1-3 1-4 2-1 2-2 2-3 2-4');
+ok('영어 단원 번호는 챕터 번호', bySub('영어').map(p => p.unit).join(' ') === '12');
 
 /* 수학은 손으로 쓰지 않고 계산해서 만든다. 답이 틀리면 아이가 맞게 답하고 틀린 것이 된다. */
 const mathCheck = execFileSync('python3', ['-c', `
@@ -183,62 +182,115 @@ if (mean.length) console.log('     ', mean.join(' / '));
 
 ok('오답에서는 정답을 알려준다', (cat['오답'] || []).every(t => t.includes('{정답}')));
 
-/* ── 영어 단어장 (2026-08-25) ── */
-group('영어 — 단어 한 줄이 문제 세 개가 되는가');
+/* ── 영어 단어장 (2026-08-26) ── */
+group('영어 — 단어 하나가 여섯 갈래 문제가 되는가');
 
-const wordCheck = execFileSync('python3', ['-c', `
-import csv, json, pathlib, packs
-words, means = set(), set()
-for f in pathlib.Path('content/problems/영어').glob('*.csv'):
-    for r in csv.DictReader(f.open(encoding='utf-8')):
-        words.add(r['단어'].lower()); means.add(r['뜻'])
-out = {'words': len(words), 'means': len(means), 'packs': [], 'fake_is_real': [], 'dup': []}
+const EN = JSON.parse(execFileSync('python3', ['-c', `
+import json, pathlib, packs
+out = []
 for p in packs.scan(pathlib.Path('content/problems')):
     if p['subject'] != '영어': continue
-    g = {}
-    for q in p['problems']:
-        g[q['group']] = g.get(q['group'], 0) + 1
-        if len(set(q['choices'])) != 4: out['dup'].append(q['prompt'])
-        if q['group'] == '철자 고르기':
-            for c in q['choices']:
-                if c != q['answer'] and c.lower() in words: out['fake_is_real'].append(c)
-    out['packs'].append(g)
-print(json.dumps(out, ensure_ascii=False))`], { cwd: ROOT, encoding: 'utf8' });
-const W = JSON.parse(wordCheck);
+    out.append({'name': p['name'], 'warnings': p['warnings'],
+                'problems': [{k: q[k] for k in ('prompt','answer','choices','hint','group','deep')}
+                             for q in p['problems']]})
+print(json.dumps(out, ensure_ascii=False))`], { cwd: ROOT, encoding: 'utf8' }));
 
-ok(`단어 ${W.words}개 — 겹치는 단어 없음`, W.words === 96);
-ok(`뜻 ${W.means}개 — 겹치는 뜻 없음`, W.means === 96);
-ok('모든 단원에 세 유형이 다 있다',
-  W.packs.every(g => g['뜻 알기'] && g['영어로 쓰기'] && g['철자 고르기']));
-ok('뜻 알기와 영어로 쓰기는 단어 수만큼 있다',
-  W.packs.every(g => g['뜻 알기'] === 12 && g['영어로 쓰기'] === 12));
-ok('보기가 겹치는 문제가 없다', !W.dup.length);
+const enQs = EN.flatMap(p => p.problems);
+const byGroup = g => enQs.filter(q => q.group === g);
 
-/* 가짜 철자가 **다른 진짜 단어**면 안 된다. 틀린 답을 고르고도 진짜 단어를 본 셈이 된다. */
-ok(`가짜 철자가 진짜 단어인 경우 ${W.fake_is_real.length}건`, !W.fake_is_real.length);
-if (W.fake_is_real.length) console.log('     ', W.fake_is_real.slice(0, 6).join(', '));
+ok('읽다가 건너뛴 것이 없다', EN.every(p => !p.warnings.length));
+ok(`${enQs.length}문제`, enQs.length >= 50);
+ok('여섯 갈래가 다 있다',
+  ['문장 넣기', '뜻 알기', '비슷한 말', '뜻 고르기', '반대말', '철자 고르기']
+    .every(g => byGroup(g).length));
+ok('문장 넣기와 뜻 알기는 단어 수만큼 있다 — 이 둘은 모든 낱말에 나와야 한다',
+  byGroup('문장 넣기').length === 12 && byGroup('뜻 알기').length === 12);
+ok('기본은 문장 넣기·뜻 알기·비슷한 말, 심화는 나머지',
+  byGroup('문장 넣기').every(q => !q.deep) && byGroup('비슷한 말').every(q => !q.deep) &&
+  byGroup('철자 고르기').every(q => q.deep) && byGroup('반대말').every(q => q.deep));
 
-/* 힌트가 답을 그대로 말해버리면 힌트가 아니다. 뜻이 한 글자면(책·눈) 첫 글자가 곧 답이다. */
-const leak = execFileSync('python3', ['-c', `
-import json, re, pathlib, packs
-bad = [q['prompt'] for p in packs.scan(pathlib.Path('content/problems')) for q in p['problems']
-       if len(q['answer']) >= 2 and not re.fullmatch(r'[\\d.]+', q['answer']) and q['answer'] in q['hint']]
-print(json.dumps(bad, ensure_ascii=False))`], { cwd: ROOT, encoding: 'utf8' });
-ok('힌트가 정답을 그대로 말하는 문제가 없다', JSON.parse(leak).length === 0);
+/* 빈칸에 답이 남아 있으면 문제가 아니다. 예문은 **변화형**을 쓰므로(contain → contained)
+   찾기에 실패하면 낱말이 그대로 남는다. 이게 이 형식에서 가장 깨지기 쉬운 곳이다. */
+ok('빈칸 문제에 정답이 남아 있지 않다',
+  byGroup('문장 넣기').every(q => q.prompt.includes('______') &&
+    !new RegExp(`\\b${q.answer}\\b`, 'i').test(q.prompt)));
 
-const spell = execFileSync('python3', ['-c', `
+const leaky = enQs.filter(q => q.group !== '뜻 고르기' &&
+  new RegExp(`\\b${q.answer.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(q.prompt));
+ok('어느 문제에도 정답이 문제 안에 안 보인다', !leaky.length);
+if (leaky.length) console.log('     ', leaky.slice(0, 3).map(q => q.prompt).join(' / '));
+
+/* 비슷한 말·반대말의 오답이 사실은 정답이면 안 된다.
+   clever의 오답에 dumb이 들어가는 것은 **일부러다** — 뜻만이 아니라 방향을 묻는다. */
+const words = JSON.parse(execFileSync('python3', ['-c', `
+import json, pathlib, packs
+text = (pathlib.Path('content/problems/영어') / '12 단어장.md').read_text(encoding='utf-8')
+name, rows, w = packs.parse_wordbook(text, 'x')
+import re
+out = {}
+cur = None
+for line in text.splitlines():
+    h = packs.HEAD_RE.match(line.strip())
+    if h: cur = h.group(1); out[cur] = {'syn': [], 'ant': []}
+    elif cur and line.startswith('유의어:'): out[cur]['syn'] = [x.strip() for x in line.split(':',1)[1].split(',') if x.strip()]
+    elif cur and line.startswith('반의어:'): out[cur]['ant'] = [x.strip() for x in line.split(':',1)[1].split(',') if x.strip()]
+print(json.dumps(out, ensure_ascii=False))`], { cwd: ROOT, encoding: 'utf8' }));
+
+const synBad = byGroup('비슷한 말').filter(q => {
+  const w = words[q.prompt.split(' —')[0]];
+  return q.choices.some(c => c !== q.answer && w.syn.includes(c));
+});
+ok('비슷한 말의 오답에 진짜 유의어가 섞여 있지 않다', !synBad.length);
+
+const antBad = byGroup('반대말').filter(q => {
+  const w = words[q.prompt.split(' —')[0]];
+  return q.choices.some(c => c !== q.answer && w.ant.includes(c));
+});
+ok('반대말의 오답에 진짜 반의어가 섞여 있지 않다', !antBad.length);
+
+ok('비슷한 말 문제에는 그 낱말의 반대말이 오답으로 들어간다 — 방향을 묻는다',
+  byGroup('비슷한 말').some(q => {
+    const w = words[q.prompt.split(' —')[0]];
+    return w.ant.length && q.choices.some(c => w.ant.includes(c));
+  }));
+
+/* 보기가 버튼 안에 들어가야 한다. 뜻이 길면 아이가 안 읽고 찍는다. */
+const longest = Math.max(...enQs.flatMap(q => q.choices.map(c => c.length)));
+ok(`가장 긴 보기 ${longest}자 — 40자 아래`, longest < 40);
+
+ok('보기가 겹치는 문제가 없다', enQs.every(q => new Set(q.choices).size === 4));
+ok('힌트가 없는 문제가 없다', enQs.every(q => q.hint));
+
+/* 변화형 찾기 — 예문이 contained·tossed·gasped처럼 바뀐 꼴을 쓴다 */
+const blanks = JSON.parse(execFileSync('python3', ['-c', `
+import json, packs
+cases = [('toss','We tossed our hats into the air.'),
+         ('contain','The old box contained jewels, coins, and other treasures.'),
+         ('gasp','I gasped for air because I swallowed some water.'),
+         ('lean','We leaned over the edge to see the view below.'),
+         ('carry','She carries a big bag.'),
+         ('shop','He is shopping now.'),
+         ('nowhere','This sentence has no match.')]
+print(json.dumps({w: packs.blank_out(s, w) for w, s in cases}, ensure_ascii=False))`],
+  { cwd: ROOT, encoding: 'utf8' }));
+ok('-ed 변화형을 찾는다', blanks.toss.includes('We ______ our hats'));
+ok('-s / -ies 변화형을 찾는다', blanks.carry && blanks.carry.includes('She ______ a big bag'));
+ok('자음을 겹치는 -ing도 찾는다', blanks.shop && blanks.shop.includes('is ______ now'));
+ok('못 찾으면 빈칸 문제를 안 만든다 (null)', blanks.nowhere === null);
+
+const spell = JSON.parse(execFileSync('python3', ['-c', `
 import json, packs
 print(json.dumps({w: packs.misspell(w, 3, []) for w in
-      ['apple', 'eight', 'rabbit', 'cat', 'thank you']}, ensure_ascii=False))`],
-  { cwd: ROOT, encoding: 'utf8' });
-const M = JSON.parse(spell);
-ok('가짜 철자를 세 개씩 만든다', Object.values(M).every(v => v.length === 3));
-ok('첫 글자는 안 건드린다 — 첫 글자가 다르면 보지도 않고 지운다',
-  Object.entries(M).every(([w, v]) => v.every(x => x[0] === w[0])));
-ok('원래 낱말과 같은 것은 없다', Object.entries(M).every(([w, v]) => !v.includes(w)));
-ok('빈칸을 넘는 낱말도 다룬다', M['thank you'].every(x => x.includes(' ')));
+      ['startled', 'village', 'toss', 'identical']}, ensure_ascii=False))`],
+  { cwd: ROOT, encoding: 'utf8' }));
+ok('가짜 철자를 세 개씩 만든다', Object.values(spell).every(v => v.length === 3));
+ok('첫 글자는 안 건드린다', Object.entries(spell).every(([w, v]) => v.every(x => x[0] === w[0])));
 
-/* ── 보기 품질 (2026-08-24) ── */
+const realWord = new Set(Object.keys(words).map(w => w.toLowerCase()));
+ok('가짜 철자가 같은 단원의 진짜 낱말이 아니다',
+  byGroup('철자 고르기').every(q => q.choices.every(c => c === q.answer || !realWord.has(c.toLowerCase()))));
+
+/* ── 보기 품질 (2026-08-24) ── *//* ── 보기 품질 (2026-08-24) ── */
 group('보기 넷이 같은 모양인가 — 계산 안 하고 고를 수 있으면 안 됩니다');
 
 const shape = execFileSync('python3', ['-c', `
@@ -336,8 +388,8 @@ ok('한국사는 1-3과 1-4', E.START_UNITS['한국사'].join() === '1-3,1-4');
 
 const realOpen = [...E.openPacks(real.map(p => ({ ...p })), null)].sort();
 ok(`실제 파일로 열리는 것 — ${realOpen.join(' · ')}`,
-  realOpen.join(',') === '1-1-인사와-나,1-3-삼국의-시작,1-4-삼국의-전성기,2-3-원,2-4-분수,gugudan');
-ok('목록에 없는 과목(영어)은 첫 단원만', realOpen.includes('1-1-인사와-나'));
+  realOpen.join(',') === '1-3-삼국의-시작,1-4-삼국의-전성기,12-단어장,2-3-원,2-4-분수,gugudan');
+ok('목록에 없는 과목(영어)은 첫 단원만', realOpen.includes('12-단어장'));
 
 const START = [
   pack('a1', '수학', '1-1', 0), pack('a2', '수학', '2-3', 1), pack('a3', '수학', '2-4', 2),

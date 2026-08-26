@@ -70,14 +70,20 @@ def scan(folder):
 
 # ── 단어장 (영어) ─────────────────────────────────────
 #
-# `단어,뜻` 한 줄이 **문제 세 개**가 된다. 부모가 단어만 적으면 되게 하려는 것이다.
-# 기획서 14장(사진으로 단어 등록)이 결국 이 형식으로 떨어지므로 형식을 먼저 만든다.
+# 아이가 실제로 쓰는 단어장을 **그대로** 옮길 수 있는 형식이다(기획서 14.0).
+# 단어 하나에 뜻·예문·유의어·반의어가 붙고, 거기서 문제 다섯 갈래가 나온다.
 #
-#   apple,사과   →  apple은 무슨 뜻일까?          → 사과      (기본)
-#                   '사과'를 영어로 쓰면?          → apple     (기본)
-#                   '사과'의 철자가 맞는 것은?     → apple     (심화)
+#   ## toss (v.)
+#   뜻: to throw something lightly
+#   예문: We tossed our hats into the air.
+#   유의어: fling, chuck
+#   반의어:
 #
-# 세 문제는 **각각 따로 마스터**된다. 뜻을 아는 것과 철자를 아는 것은 다른 능력이다.
+# **CSV가 아니라 .md인 이유는 예문 때문이다.** 예문에는 쉼표가 거의 항상 들어간다
+# ("jewels, coins, and other treasures"). CSV로 두면 부모가 메모장에서 한 줄 고치는
+# 순간 파일이 깨진다. 여기는 따옴표도 이스케이프도 없다.
+#
+# `단어,뜻`짜리 간단한 CSV도 계속 읽는다. 둘 다 아래 word_rows()로 모인다.
 
 WORD_HEADERS = {
     'word': ['단어', 'word'],
@@ -85,7 +91,18 @@ WORD_HEADERS = {
     'hint': ['힌트', 'hint'],
 }
 
-MIN_SPELL_LEN = 4   # 세 글자 이하는 철자 고르기가 의미 없다
+WORD_FIELDS = {
+    'mean': ('뜻', 'meaning', '의미'),
+    'example': ('예문', 'example', '문장'),
+    'syn': ('유의어', 'synonym', 'synonyms', '비슷한말'),
+    'ant': ('반의어', 'antonym', 'antonyms', '반대말'),
+    'hint': ('힌트', 'hint'),
+}
+
+MIN_SPELL_LEN = 4    # 세 글자 이하는 철자 고르기가 의미 없다
+MAX_MEAN_LEN = 38    # 뜻이 이보다 길면 버튼 넷에 못 담는다 — 단어→뜻 문제를 안 낸다
+
+HEAD_RE = re.compile(r"^##\s+([A-Za-z][A-Za-z' -]*?)\s*(?:\(([^)]*)\))?\s*$", re.M)
 
 
 def is_wordlist(header):
@@ -94,8 +111,47 @@ def is_wordlist(header):
     return has('word') and has('mean')
 
 
+def parse_wordbook(text, stem):
+    """`## 단어 (품사)` 로 시작하는 단어장 .md"""
+    name, warnings, words, cur = stem, [], [], None
+
+    def close():
+        if cur and cur['mean']:
+            words.append(cur)
+        elif cur:
+            warnings.append(f'{cur["word"]} — 뜻이 없어 건너뛰었습니다.')
+
+    for n, raw in enumerate(text.splitlines(), start=1):
+        line = raw.strip()
+        if not line:
+            continue
+        head = HEAD_RE.match(line)
+        if head:
+            close()
+            cur = {'word': head.group(1).strip(), 'pos': (head.group(2) or '').strip(),
+                   'mean': '', 'example': '', 'syn': [], 'ant': [], 'hint': ''}
+            continue
+        if line.startswith('#'):
+            name = line.lstrip('#').strip() or stem
+            continue
+        if cur is None:
+            continue
+        key, _, val = line.partition(':')
+        field = next((f for f, names in WORD_FIELDS.items() if key.strip().lower() in names), None)
+        if not field:
+            warnings.append(f'{n}번째 줄 — 뜻·예문·유의어·반의어·힌트 중 하나로 시작해야 합니다.')
+            continue
+        val = val.strip()
+        if field in ('syn', 'ant'):
+            cur[field] = [x.strip() for x in val.split(',') if x.strip()]
+        else:
+            cur[field] = val
+    close()
+    return name, *word_rows(words, warnings)
+
+
 def parse_words(text, stem):
-    """단어장 CSV를 문제 행으로 펼친다. 반환 모양은 parse_csv와 같다."""
+    """간단한 단어장 CSV — `단어,뜻`"""
     reader = csv.reader(io.StringIO(text))
     header = next(reader, None)
     if not header:
@@ -116,50 +172,129 @@ def parse_words(text, stem):
         if not w or not m:
             warnings.append(f'{n}번째 줄 — 단어나 뜻이 비어 있어 건너뛰었습니다.')
             continue
-        words.append((w, m, get(row, 'hint')))
+        words.append({'word': w, 'pos': '', 'mean': m, 'example': '',
+                      'syn': [], 'ant': [], 'hint': get(row, 'hint')})
+    return stem, *word_rows(words, warnings)
 
+
+POS_KO = {'v': '움직임을 나타내는 말', 'n': '이름을 나타내는 말',
+          'adj': '꾸며 주는 말', 'adv': '어떻게를 나타내는 말'}
+
+
+def word_rows(words, warnings):
+    """단어 하나에서 문제 다섯 갈래를 만든다. 반환 모양은 parse_csv와 같다.
+
+       보기는 **같은 단원 안에서만** 가져온다. 그래서 한 파일이 곧 한 주차 챕터다."""
     seen_w, seen_m = set(), set()
-    for w, m, _ in words:
-        # 같은 파일에 같은 단어나 같은 뜻이 둘 있으면 보기를 만들 수 없다
-        if w.lower() in seen_w:
-            warnings.append(f'{w} — 같은 단어가 두 번 있습니다. 보기가 겹칩니다.')
-        if m in seen_m:
-            warnings.append(f'{m} — 같은 뜻이 두 번 있습니다. 보기가 겹칩니다.')
-        seen_w.add(w.lower())
-        seen_m.add(m)
+    for w in words:
+        if w['word'].lower() in seen_w:
+            warnings.append(f'{w["word"]} — 같은 단어가 두 번 있습니다. 보기가 겹칩니다.')
+        if w['mean'] in seen_m:
+            warnings.append(f'{w["mean"]} — 같은 뜻이 두 번 있습니다. 보기가 겹칩니다.')
+        seen_w.add(w['word'].lower())
+        seen_m.add(w['mean'])
 
-    all_words = [w for w, _, _ in words]
+    all_words = [w['word'] for w in words]
+    short_means = [w['mean'] for w in words if len(w['mean']) <= MAX_MEAN_LEN]
+    # 유의어·반의어 문제의 보기는 **다른 단어들의 유의어와 반의어**에서 가져온다.
+    # 그 단어 자신의 반대쪽을 섞는 것이 핵심이다 — clever의 오답에 dumb이 있어야
+    # 뜻만 아는 게 아니라 **방향**을 아는지 알 수 있다.
+    pool = []
+    for w in words:
+        pool += w['syn'] + w['ant']
+
     rows = []
-    for w, m, hint in words:
-        # 조사(은/는·을/를)를 안 쓴다. 영어 낱말 뒤의 조사는 **소리로 정해지는데**
-        # 철자만 보고는 알 수 없다. apple은? apple는? 둘 다 어색하다. 줄표로 피한다.
-        rows.append({
-            'question': f'{w} — 무슨 뜻일까?', 'answer': m,
-            'wrongs': [], 'hint': hint or f'첫소리는 "{chosung(m[0])}"',
-            'group': '뜻 알기', 'deep': False,
-        })
-        rows.append({
-            'question': f'"{m}" — 영어로 쓰면?', 'answer': w,
-            'wrongs': [], 'hint': f'첫 글자는 {w[0]}',
-            'group': '영어로 쓰기', 'deep': False,
-        })
-        if len(w.replace(' ', '')) >= MIN_SPELL_LEN:
+    for w in words:
+        word, mean, ex = w['word'], w['mean'], w['example']
+        pos = POS_KO.get(w['pos'].strip('.').lower(), '')
+        first = f'첫 글자는 {word[0]}'
+
+        # ① 문장 넣기 — "영어 지문 보고 단어 맞추기"
+        blanked = blank_out(ex, word) if ex else None
+        if ex and not blanked:
+            warnings.append(f'{word} — 예문에서 이 낱말을 찾지 못해 빈칸 문제를 못 만들었습니다.')
+        if blanked:
             rows.append({
-                'question': f'"{m}" — 철자가 맞는 것은?', 'answer': w,
-                'wrongs': misspell(w, 3, all_words),
-                'hint': f'글자 수는 {len(w.replace(" ", ""))}개야',
+                'question': blanked, 'answer': word, 'wrongs': [],
+                'hint': f'{first}' + (f'. {pos}이야' if pos else ''),
+                'group': '문장 넣기', 'deep': False,
+            })
+
+        # ② 뜻 → 단어
+        rows.append({
+            'question': f'"{mean}" — 어떤 낱말일까?', 'answer': word, 'wrongs': [],
+            'hint': w['hint'] or first, 'group': '뜻 알기', 'deep': False,
+        })
+
+        # ③ 유의어
+        if w['syn']:
+            wrongs = pick_related(pool, need=3, avoid=[word, *w['syn']], prefer=w['ant'])
+            if len(wrongs) == 3:
+                rows.append({
+                    'question': f'{word} — 뜻이 가장 가까운 낱말은?', 'answer': w['syn'][0],
+                    'wrongs': wrongs, 'hint': f'첫 글자는 {w["syn"][0][0]}',
+                    'group': '비슷한 말', 'deep': False,
+                })
+
+        # ④ 단어 → 뜻 (뜻이 짧을 때만. 버튼 넷에 긴 글이 들어가면 아이가 안 읽는다)
+        if len(mean) <= MAX_MEAN_LEN and len([m for m in short_means if m != mean]) >= 3:
+            rows.append({
+                'question': f'{word} — 무슨 뜻일까?', 'answer': mean, 'wrongs': [],
+                'hint': f'문장을 떠올려봐 — {blanked}' if blanked else first,
+                'group': '뜻 고르기', 'deep': True,
+            })
+
+        # ⑤ 반대말
+        if w['ant']:
+            wrongs = pick_related(pool, need=3, avoid=[word, *w['ant']], prefer=w['syn'])
+            if len(wrongs) == 3:
+                rows.append({
+                    'question': f'{word} — 반대말은?', 'answer': w['ant'][0],
+                    'wrongs': wrongs, 'hint': f'첫 글자는 {w["ant"][0][0]}',
+                    'group': '반대말', 'deep': True,
+                })
+
+        # ⑥ 철자
+        if len(word.replace(' ', '')) >= MIN_SPELL_LEN:
+            rows.append({
+                'question': f'"{mean}" — 철자가 맞는 것은?', 'answer': word,
+                'wrongs': misspell(word, 3, all_words),
+                'hint': f'글자 수는 {len(word.replace(" ", ""))}개야',
                 'group': '철자 고르기', 'deep': True,
             })
-    return stem, rows, warnings
+    return rows, warnings
 
 
-CHO = 'ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ'
+def pick_related(pool, need, avoid, prefer=()):
+    """유의어·반의어 문제의 오답. `prefer`(그 단어의 반대쪽)를 먼저 넣는다."""
+    skip = {x.lower() for x in avoid}
+    out = []
+    for x in list(prefer) + list(pool):
+        if len(out) >= need:
+            break
+        if x.lower() not in skip:
+            skip.add(x.lower())
+            out.append(x)
+    return out
 
 
-def chosung(ch):
-    """'사' → 'ㅅ'. 뜻이 한 글자면(책·눈·코) 첫 글자를 알려주는 것이 곧 답을 알려주는 것이다."""
-    code = ord(ch) - 0xAC00
-    return CHO[code // 588] if 0 <= code < 11172 else ch
+INFLECT = (
+    '{w}', '{w}s', '{w}es', '{w}ed', '{w}d', '{w}ing',
+    '{stem}ing', '{stem}ed', '{stem}es', '{stem}ing',
+    '{dbl}ed', '{dbl}ing', '{y}ied', '{y}ies',
+)
+
+
+def blank_out(sentence, word):
+    """예문에서 그 낱말을 찾아 빈칸으로 바꾼다. 예문은 **변화형**을 쓴다 —
+       contain → contained, toss → tossed. 못 찾으면 None을 돌려주고 그 문제는 안 낸다."""
+    forms = {p.format(w=word, stem=word[:-1], dbl=word + word[-1], y=word[:-1])
+             for p in INFLECT}
+    for f in sorted(forms, key=len, reverse=True):
+        m = re.search(rf'\b{re.escape(f)}\b', sentence, re.I)
+        if m:
+            return sentence[:m.start()] + '______' + sentence[m.end():]
+    return None
 
 
 VOWELS = 'aeiou'
@@ -220,9 +355,12 @@ def read_pack(path, pid, subject, order):
 
 
 def pick_parser(path, text):
-    """첫 줄을 보고 고른다. `단어,뜻`이면 단어장, 아니면 지금까지의 문제 파일."""
+    """파일 생김새를 보고 고른다.
+         .md 에 `## 단어` 가 있으면  단어장 (영어)
+         .csv 첫 줄이 `단어,뜻` 이면   간단한 단어장
+         나머지                        지금까지의 문제 파일"""
     if path.suffix.lower() != '.csv':
-        return parse_md
+        return parse_wordbook if HEAD_RE.search(text) else parse_md
     header = next(csv.reader(io.StringIO(text)), None)
     return parse_words if header and is_wordlist(header) else parse_csv
 
