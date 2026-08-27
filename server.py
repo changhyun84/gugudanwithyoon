@@ -118,12 +118,46 @@ def new_profile(pid, goal):
     }
 
 
-def save_profile(pid, data):
+# 부모가 정하는 것은 아이 화면이 덮어쓰면 안 된다.
+# 아이 화면은 프로필 전체를 통째로 PUT하는데, 그 사본은 게임을 연 순간의 것이라
+# 그 사이 부모가 바꾼 진도를 지운다. 실제로 그랬다 (구현-현황 34장).
+#
+# web/store.js의 PARENT_FIELDS와 **같아야 한다** — test/t_race.mjs가 두 파일을 대조한다.
+# 여기서 한 번 더 하는 이유는 아이패드가 화면을 내릴 때 쓰는 sendBeacon 때문이다 —
+# 그 길에서는 브라우저가 먼저 읽어볼 수 없다.
+PARENT_FIELDS = ("progress", "disabled", "gifts")
+
+
+def adopt_parent(mine, stored):
+    if not stored:
+        return mine
+    out = dict(mine)
+    for f in PARENT_FIELDS:
+        if f in stored:
+            out[f] = stored[f]
+    goal = (stored.get("settings") or {}).get("goal")
+    if isinstance(goal, int):
+        out["settings"] = {**out.get("settings", {}), "goal": goal}
+    return out
+
+
+def apply_parent(stored, patch):
+    """부모가 고친 것만 얹는다. patch에 없는 것은 그대로 둔다."""
+    out = dict(stored)
+    for f in PARENT_FIELDS:
+        if f in patch:
+            out[f] = patch[f]
+    if isinstance(patch.get("settings"), dict):
+        out["settings"] = {**out.get("settings", {}), **patch["settings"]}
+    return out
+
+
+def save_profile(pid, data, adopt=True):
     path = profile_path(pid)
     previous = read_json(path)
     if previous:
         backup_daily(pid, previous)
-    write_json(path, data)
+    write_json(path, adopt_parent(data, previous) if adopt else data)
 
 
 def backup_daily(pid, data):
@@ -171,9 +205,13 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error(404)
 
     def do_PUT(self):
-        path = decode_path(self.path)
-        if path.startswith("/api/profile/"):
-            self.put_profile(path.rsplit("/", 1)[1])
+        path = decode_path(self.path)          # 쿼리는 여기서 이미 떨어진다
+        query = urlparse(self.path).query
+        if path.endswith("/parent") and path.startswith("/api/profile/"):
+            self.put_parent(path[len("/api/profile/"):-len("/parent")])
+        elif path.startswith("/api/profile/"):
+            # 되돌리기만 파일에 있는 그대로 쓴다. 아이 화면의 저장은 부모 몫을 안 건드린다.
+            self.put_profile(path.rsplit("/", 1)[1], adopt="restore=1" not in query)
         elif path == "/api/parent/settings":
             self.put_settings()
         else:
@@ -209,11 +247,22 @@ class Handler(BaseHTTPRequestHandler):
         write_json(profile_path(pid), data)
         self.send_json(data, 201)
 
-    def put_profile(self, pid):
+    def put_profile(self, pid, adopt=True):
         if not ID_RE.match(pid):
             return self.send_error(400)
-        save_profile(pid, self.read_body())
+        save_profile(pid, self.read_body(), adopt=adopt)
         self.send_json({"saved": True})
+
+    def put_parent(self, pid):
+        """부모 화면이 부르는 길. **부모 몫만** 고친다 — 아이가 지금 풀고 있어도 안전하다."""
+        if not ID_RE.match(pid):
+            return self.send_error(400)
+        stored = read_json(profile_path(pid))
+        if not stored:
+            return self.send_error(404)
+        merged = apply_parent(stored, self.read_body())
+        save_profile(pid, merged, adopt=False)
+        self.send_json(merged)
 
     def put_settings(self):
         if not self.parent_ok():

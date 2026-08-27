@@ -68,16 +68,16 @@ if (noId.length) console.log('     없는 id:', noId.join(', '));
 /* ── 진도 저장 ── */
 group('진도 저장');
 
-ok('고른 단원 목록으로 저장한다', /fresh\.progress = \{ units/.test(HTML));
-ok('난이도도 같이 저장한다', /fresh\.progress = \{ units, level \}/.test(HTML));
+ok('고른 단원 목록으로 저장한다', /progress: \{ units, level \}/.test(HTML));
+
 ok('난이도 세 가지를 engine.js에서 받아 쓴다 — 이름을 두 곳에 두면 어긋난다',
   /import \{[^}]*\bLEVELS\b/.test(HTML) && HTML.includes('LEVELS.map'));
 ok('심화만 고르면 무엇이 빠지는지 말해준다', HTML.includes('구구단은 안 나옵니다'));
 ok('낼 수 있는 문제가 적으면 알려준다', /같은 문제가 자주 돌아옵니다/.test(HTML));
-ok('저장할 때 프로필을 다시 받아 얹는다 (2.11)',
-  /store\.loadProfile\(PROFILE\.id\)[\s\S]{0,400}saveProfile\(fresh\)/.test(HTML));
+ok('부모 몫만 고친다 — 아이가 지금 풀고 있어도 안전하다 (34장)',
+  /store\.saveParent\(PROFILE\.id, patch\)/.test(HTML) && !/store\.saveProfile\(/.test(HTML));
 ok('팩 단위 끄기는 진도로 합쳐졌다 — 겹치면 부모가 이유를 알 수 없다',
-  /fresh\.disabled\.packs = \[\]/.test(HTML));
+  /patch\.disabled = \{ \.\.\.PROFILE\.disabled, packs: \[\] \}/.test(HTML));
 ok('하나도 안 켜면 한 번 더 묻는다', /단원을 하나도 안 켜면/.test(HTML));
 ok('부모 화면과 엔진이 같은 openPacks를 쓴다',
   imported.includes('openPacks') && HTML.includes('openPacks(PACKS'));
@@ -87,17 +87,18 @@ ok('부모는 안 연 단원도 본다', HTML.includes('buildIndexAll(loaded)'))
 group('풀 · 별 주기');
 
 ok('풀과 별을 따로 준다', HTML.includes("id=\"giveGrass\"") && HTML.includes("id=\"giveStar\""));
-ok('기록이 남는다', /\(fresh\.gifts \|\|= \[\]\)\.push/.test(HTML));
-ok('아이 상태 위에 얹는다 — 지금 놀고 있을 수 있다',
-  /store\.loadProfile\(PROFILE\.id\)[\s\S]{0,600}fresh\.wallet\.grass/.test(HTML));
-ok('0 아래로는 안 내려간다', /Math\.max\(0, \(fresh\.wallet\.grass/.test(HTML));
+ok('기록이 남는다', /gifts: \[\.\.\.\(PROFILE\.gifts \|\| \[\]\), gift\]/.test(HTML));
+ok('준 것마다 이름표가 붙는다 — 두 번 받지 않게', /id: `g\$\{Date\.now\(\)\}/.test(HTML));
+ok('부모는 지갑을 안 건드린다 — 아이 화면이 더한다 (34.3)',
+  !/\.wallet\.(grass|star)\s*=/.test(HTML));
 ok('뺄 때는 한 번 더 묻는다 (원칙 2.1)', /grass < 0 \|\| star < 0[\s\S]{0,200}confirm/.test(HTML));
 ok('이유 칸은 부모 메모다 — 아이에게 안 보인다고 적혀 있다',
   HTML.includes('아이에게는 안 보입니다'));
 
 /* 아이 화면 쪽 */
 ok('아이 화면이 받은 것을 한 번만 알린다', /function takeGift\(\)/.test(APP));
-ok('알린 것은 표시해 둔다', /g\.seen = true/.test(APP));
+ok('한 번 받은 것은 표시해 둔다', /P\.appliedGifts \|\|= \[\]\)\.push\(g\.id\)/.test(APP));
+ok('아이 화면이 지갑에 더한다', /P\.wallet\.grass = Math\.max\(0, P\.wallet\.grass \+ grass\)/.test(APP));
 ok('받은 금액은 말하되 이유는 말하지 않는다',
   /엄마 아빠가 \$\{bits/.test(APP) && !/g\.why/.test(APP.slice(APP.indexOf('function takeGift'), APP.indexOf('function catchUpTier'))));
 

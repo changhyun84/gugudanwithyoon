@@ -114,9 +114,15 @@
     <div id="progress">불러오는 중…</div>
     <div class="row" style="margin-top:10px">
       <button id="saveProg">진도 저장</button>
-      <button class="soft" id="reload" style="flex:0 0 auto">파일 다시 읽기</button>
     </div>
     <p class="msg" id="msgProg"></p>
+    <p class="hint">저장만 누르면 됩니다. 아래 <b>문제 파일 다시 읽기</b>는
+      <b>문제 파일을 고쳤을 때만</b> 쓰는 것이고 진도와는 상관없습니다.</p>
+
+    <div class="row" style="margin-top:14px">
+      <button class="soft" id="reload" style="flex:0 0 auto">문제 파일 다시 읽기</button>
+      <span class="hint" id="reloadWhy"></span>
+    </div>
 
     <details>
       <summary>문제 하나씩 끄기</summary>
@@ -220,6 +226,12 @@ let ALLOW = null;                          // 용돈 설정
 let level = '섞어';                        // 난이도 (기본 · 섞어 · 심화)
 let dirtyProg = false;                     // 진도에 저장 안 한 변경이 있나
 const DAYNAMES = ['일', '월', '화', '수', '목', '금', '토'];
+
+/* 아이 화면이 언제 반영되는지. 같은 브라우저면 바로 되고(아이 화면이 저장소 변화를 듣는다),
+   다른 기기면 아이가 새로고침해야 한다. 정적 배포에서는 늘 같은 브라우저다. */
+const REFRESH_NOTE = store.STATIC
+  ? '아이 화면이 열려 있으면 바로 바뀝니다.'
+  : '아이 화면에서 새로고침하면 반영됩니다.';
 let PROFILE = null;
 let WISHDATA = null;   // 팩 목록을 받을 때 같이 실려 온다
 let OFF = { problems: [], packs: [] };
@@ -545,16 +557,15 @@ $('saveProg').onclick = async () => {
 
   $('msgProg').textContent = '저장 중…';
   try {
-    // 아이가 지금 놀고 있을 수 있다. 방금 상태를 다시 받아 진도만 얹는다 (구현-현황 2.11).
-    const fresh = await store.loadProfile(PROFILE.id);
-    fresh.progress = { units, level };
+    /* **부모 몫만** 고친다. 아이가 지금 풀고 있어도 그 진행을 안 건드리고,
+       거꾸로 아이 화면의 자동 저장이 이걸 지우지도 않는다 (구현-현황 34장). */
+    const patch = { progress: { units, level } };
     // 팩 단위 끄기는 이 화면으로 합쳐졌다. 예전에 꺼둔 것이 남아 겹치면 부모가 이유를 알 수 없다.
-    if (fresh.disabled?.packs?.length) fresh.disabled.packs = [];
-    await store.saveProfile(fresh);
-    PROFILE = fresh;
+    if (PROFILE.disabled?.packs?.length) patch.disabled = { ...PROFILE.disabled, packs: [] };
+    PROFILE = await store.saveParent(PROFILE.id, patch);
     OFF.packs = [];
     dirtyProg = false;
-    $('msgProg').textContent = `${units.length}개 단원 · ${level}. 아이패드에서 새로고침하면 반영됩니다.`;
+    $('msgProg').textContent = `${units.length}개 단원 · ${level}. ` + REFRESH_NOTE;
     showProgress();
     showStock();
     showPicks();
@@ -657,14 +668,11 @@ function openPack(packId) {
     if (!$('packOn').checked) packs.push(packId);
 
     try {
-      // 아이가 지금 놀고 있을 수 있다. 방금 상태를 다시 받아 disabled만 얹는다.
-      const fresh = await store.loadProfile(PROFILE.id);
-      fresh.disabled = { problems, packs };
-      await store.saveProfile(fresh);
+      // 부모 몫만 고친다. 아이가 지금 풀고 있어도 안전하다 (구현-현황 34장).
+      PROFILE = await store.saveParent(PROFILE.id, { disabled: { problems, packs } });
       OFF = { problems, packs };
-      PROFILE = fresh;
       dirty = false;
-      $('msgOff').textContent = '저장했습니다. 아이패드에서 새로고침하면 반영됩니다.';
+      $('msgOff').textContent = '저장했습니다. ' + REFRESH_NOTE;
       showPicks();
       showStock();
     } catch {
@@ -708,8 +716,16 @@ async function showPacks() {
   showWishes(WISHDATA);
   showProgress();
 }
+$('reloadWhy').textContent = store.STATIC
+  ? '인터넷으로 받은 게임에서는 문제 파일이 올릴 때 한 번 구워집니다 — 여기서 다시 읽어도 안 바뀝니다.'
+  : 'content/problems 폴더의 파일을 고쳤을 때 누르세요.';
+
 showPacks().catch(boom);
-$('reload').onclick = () => showPacks().catch(boom);
+$('reload').onclick = () => $('reloadWhy').textContent = store.STATIC
+  ? '인터넷으로 받은 게임에서는 문제 파일이 올릴 때 한 번 구워집니다 — 여기서 다시 읽어도 안 바뀝니다.'
+  : 'content/problems 폴더의 파일을 고쳤을 때 누르세요.';
+
+showPacks().catch(boom);
 
 /* ============ 풀 · 별 주기 ============ */
 
@@ -720,13 +736,20 @@ $('reload').onclick = () => showPacks().catch(boom);
    기록은 프로필에 남습니다. 아이 화면에는 금액이 아니라 "엄마가 줬어!"만 뜹니다. */
 
 function showGiftLog() {
-  const list = (PROFILE?.gifts || []).slice(-6).reverse();
-  $('giveLog').innerHTML = list.length
+  const done = new Set(PROFILE?.appliedGifts || []);
+  const all = PROFILE?.gifts || [];
+  const waiting = all.filter(g => g.id && !done.has(g.id)).length;
+  const list = all.slice(-6).reverse();
+
+  $('giveLog').innerHTML = (list.length
     ? list.map(g => `<div class="gift">${esc(g.at)} · ` +
         [g.grass ? `🌿 ${g.grass > 0 ? '+' : ''}${g.grass}` : '',
          g.star ? `⭐ ${g.star > 0 ? '+' : ''}${g.star}` : ''].filter(Boolean).join(' · ') +
-        (g.why ? ` — ${esc(g.why)}` : '') + '</div>').join('')
-    : '<p class="hint">아직 준 적이 없습니다.</p>';
+        (g.why ? ` — ${esc(g.why)}` : '') +
+        (g.id && !done.has(g.id) ? ' <b>· 아직 안 받음</b>' : '') + '</div>').join('')
+    : '<p class="hint">아직 준 적이 없습니다.</p>') +
+    (waiting ? `<p class="hint"><b>${waiting}건은 아이가 게임을 열 때 지갑에 들어갑니다.</b> ` +
+               '지갑을 부모가 직접 고치면 아이가 지금 풀고 있는 사이에 서로 덮어씁니다.</p>' : '');
 }
 
 $('giveBtn').onclick = async () => {
@@ -740,18 +763,13 @@ $('giveBtn').onclick = async () => {
 
   $('msgGive').textContent = '주는 중…';
   try {
-    const fresh = await store.loadProfile(PROFILE.id);
-    // 아이가 지금 놀고 있을 수 있다 — 방금 상태 위에 얹는다
-    fresh.wallet.grass = Math.max(0, (fresh.wallet.grass || 0) + grass);
-    fresh.wallet.star = Math.max(0, (fresh.wallet.star || 0) + star);
-    (fresh.gifts ||= []).push({
-      at: new Date().toLocaleDateString('sv-SE'),
-      grass, star, why: $('giveWhy').value.trim().slice(0, 40), seen: false,
-    });
-    await store.saveProfile(fresh);
-    PROFILE = fresh;
-    $('msgGive').textContent =
-      `줬습니다. 지금 풀 ${fresh.wallet.grass} · 별 ${fresh.wallet.star}. 아이패드에서 새로고침하면 보입니다.`;
+    /* **지갑은 부모가 안 건드립니다.** 준 기록만 남기고, 더하는 것은 아이 화면이 합니다.
+       부모가 지갑을 직접 고치면 아이가 지금 풀고 있는 사이에 서로 덮어씁니다 (구현-현황 34.3). */
+    const gift = { id: `g${Date.now()}${Math.floor(Math.random() * 1000)}`,
+                   at: new Date().toLocaleDateString('sv-SE'),
+                   grass, star, why: $('giveWhy').value.trim().slice(0, 40) };
+    PROFILE = await store.saveParent(PROFILE.id, { gifts: [...(PROFILE.gifts || []), gift] });
+    $('msgGive').textContent = `줬습니다. ` + REFRESH_NOTE;
     $('giveGrass').value = 0; $('giveStar').value = 0; $('giveWhy').value = '';
     showGiftLog();
     showStat();
@@ -923,7 +941,7 @@ function showImport() {
     $('impGo').disabled = true;
     try {
       const fixed = { ...data, id: PROFILE.id };   // 파일 이름과 id가 어긋나면 안 된다
-      await store.saveProfile(fixed);
+      await store.restoreProfile(fixed);
       $('impPreview').innerHTML = '<p class="msg">되돌렸습니다. 아이패드에서 새로고침하면 반영됩니다.</p>';
       await showStat();
     } catch {

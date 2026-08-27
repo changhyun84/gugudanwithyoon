@@ -55,6 +55,31 @@ function saveSoon() {
   if (++sinceSave >= 5) save();
 }
 
+/* 같은 브라우저의 다른 탭(부모 화면)이 저장하면 브라우저가 알려준다.
+   정적 배포에서는 부모 화면이 늘 같은 브라우저에 있으므로, 새로고침 없이 바로 반영된다.
+   **문제를 푸는 중에는 화면을 갈아엎지 않는다** — 답을 고르려던 손이 헛돈다.
+   지금 문제만 끝나면 홈으로 돌아갈 때 반영된다. */
+addEventListener('storage', e => {
+  if (!P || !e.key || !e.key.endsWith(P.id)) return;
+  const stored = store.readStored(P.id);
+  if (!stored) return;
+
+  const before = JSON.stringify([P.progress, P.disabled, P.gifts]);
+  P.progress = stored.progress;
+  P.disabled = stored.disabled;
+  P.gifts = stored.gifts;
+  if (stored.settings?.goal) { P.settings.goal = stored.settings.goal; P.daily.goal = stored.settings.goal; }
+  if (JSON.stringify([P.progress, P.disabled, P.gifts]) === before) return;
+
+  INDEX = buildIndex(PACKS, P.disabled, P.progress);
+  seedFacts(INDEX, P.facts);
+  catchUpUnits();
+  const gift = takeGift();
+  save();
+  if (gift) toast(gift);
+  if (view !== 'quiz') render();   // 문제 푸는 중이면 건드리지 않는다
+});
+
 addEventListener('pagehide', () => { if (P) store.saveOnExit(P); });
 addEventListener('visibilitychange', () => {
   if (P && document.visibilityState === 'hidden') save();
@@ -86,7 +111,8 @@ async function enter(id) {
   P.inventory.activeBackground ||= 'day';
   P.wishes ||= [];                                           // 받은 소원권. 지우지 않는다
   P.allowance ||= [];                                        // 바꾼 용돈 기록. 지우지 않는다
-  P.gifts ||= [];                                            // 엄마 아빠가 직접 준 풀·별
+  P.gifts ||= [];                                            // 엄마 아빠가 직접 준 풀·별 (부모 몫)
+  P.appliedGifts ||= [];                                     // 그중 지갑에 더한 것 (아이 몫)
   INDEX = buildIndex(PACKS, P.disabled, P.progress);   // 부모가 끈 것과 아직 안 연 단원이 여기서 빠진다
   seedFacts(INDEX, P.facts);
   rollDay();
@@ -697,14 +723,28 @@ function catchUpBoards() {
 
 /* 상점 단계도 더하기만 한다. facts에서 다시 세는 코드를 만들면
    부모가 문제를 끈 날 선반이 닫히고, 어제까지 살 수 있던 물건이 사라진다 (원칙 2.1 / 구현-현황 2.9). */
-/* 부모가 직접 준 풀·별 — 화면에 한 번만 알린다.
+/* 부모가 직접 준 풀·별.
+
+   **지갑에 더하는 것은 부모가 아니라 여기서 한다.** 부모 화면이 지갑을 직접 고치면
+   아이가 지금 풀고 있는 사이에 서로 덮어씁니다 (구현-현황 34.3). 부모는 `gifts`에
+   기록만 남기고, 받았는지 여부(`appliedGifts`)는 아이 몫이라 덮일 일이 없다.
+
    **얼마를 받았는지는 말하되 왜 받았는지는 말하지 않는다.** 이유 칸은 부모의 메모지
    아이에게 하는 말이 아니다. "심부름을 해서 줬어" 는 보상이 조건이 되는 순간이다. */
 function takeGift() {
-  const fresh = (P.gifts || []).filter(g => !g.seen);
+  const done = new Set(P.appliedGifts || []);
+  const fresh = (P.gifts || []).filter(g => g.id && !done.has(g.id));
   if (!fresh.length) return '';
+
   let grass = 0, star = 0;
-  for (const g of fresh) { g.seen = true; grass += g.grass || 0; star += g.star || 0; }
+  for (const g of fresh) {
+    grass += g.grass || 0;
+    star += g.star || 0;
+    (P.appliedGifts ||= []).push(g.id);
+  }
+  P.wallet.grass = Math.max(0, P.wallet.grass + grass);
+  P.wallet.star = Math.max(0, P.wallet.star + star);
+
   const bits = [];
   if (grass > 0) bits.push(`풀 ${grass}개`);
   if (star > 0) bits.push(`별 ${star}개`);

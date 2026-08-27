@@ -63,7 +63,7 @@ content/      problems/수학|한국사/*.csv · messages.csv · wishes.csv
 data/         자동 생성, git 제외
 sim/          60days.mjs (보상 균형) · repeat.mjs (문제 반복) · make-icons.py (아이콘)
               seed-math|history.py (문제 팩) · build-static.py (Pages 배포용 dist/)
-test/         t_book · t_shop · t_wish · t_allow · t_units · t_parent · t_parentrun · t_backup · t_static  .mjs
+test/         t_book · t_shop · t_wish · t_allow · t_units · t_parent · t_parentrun · t_race · t_backup · t_static  .mjs
 ```
 
 `ai.py`는 6B에서 새로 생깁니다. **`server.py`에 합치지 마세요** — 외부 호출은 실패하는 코드라 격리합니다.
@@ -104,6 +104,7 @@ test/         t_book · t_shop · t_wish · t_allow · t_units · t_parent · t_
 - **부모가 아이 별·풀을 빼고 싶어할 때** → 잘못 준 것을 되돌릴 때만입니다. 벌로 쓰면 *틀려도 손해 없다*가 깨집니다 (기획서 8.10)
 - **AI 기능을 만들 때** → 이 질문 하나 — *키가 없거나 인터넷이 끊긴 상태에서 아이 화면이 평소와 똑같은가*
 - **화면에 문구를 넣을 때** → *정적 모드에서도 참인가.* 코드가 갈라지지 않아도 **문구가 갈라집니다** — "아직 아이가 없습니다"가 실제로 그랬습니다 (32.2)
+- **프로필을 저장하는 코드를 쓸 때** → *누가 이 칸의 주인인가.* 부모 몫은 `progress`·`disabled`·`gifts`·`settings.goal`뿐이고 나머지는 아이 몫입니다. 부모 화면은 `saveParent()`만 쓰세요 — `saveProfile()`을 쓰면 아이가 푼 것을 되돌립니다 (`구현-현황.md` 34장)
 - **답을 직접 쓰게 할 때** → 막힌 아이가 누를 것이 화면에 있는가 (「보기 보여줘」·「모르겠어」)
 - **영어 단어를 넣을 때** → `.md` 단어장 형식(`문제-만들기-프롬프트.md`). **예문에 그 낱말의 유의어를 쓰지 마세요** — 빈칸을 보고 답이 바로 보입니다. 뜻은 35자 이내
 - **아이 학기가 바뀔 때** → `engine.js`의 `START_UNITS`. 부모가 이미 진도를 저장했으면 부모 화면에서 체크하세요
@@ -121,6 +122,7 @@ node test/t_wish.mjs       # 33개 — 배경·소원권. 받은 소원권이 �
 node test/t_allow.mjs      # 24개 — 용돈. 화폐가 풀인지, 주 1회인지
 node test/t_units.mjs      # 141개 — 과목·단원·진도·보기 품질·난이도·유형 반복·영어 단어장·문제 파일 검산
 node test/t_parent.mjs     # 37개 — 부모 화면 정리·풀 별 주기·난이도·이름
+node test/t_race.mjs       # 25개 — 부모와 아이가 동시에 쓸 때. 서로 덮어쓰지 않는지
 node test/t_parentrun.mjs  # 25개 — 부모 화면을 **실제로 실행**. 두 모드 다. 조용히 죽는 걸 잡는다
 node test/t_backup.mjs     # 34개 — 내보내기·되돌리기·PWA
 node test/t_static.mjs     # 53개 — 정적 배포. 두 모드가 갈라지지 않았는지
