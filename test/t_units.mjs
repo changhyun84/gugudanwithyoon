@@ -7,7 +7,7 @@
    아이가 몇 달 쌓은 진도·마스터·스티커가 통째로 새 문제가 됩니다 (기술설계서 5.4). */
 
 import { execFileSync } from 'node:child_process';
-import { readFileSync as read } from 'node:fs';
+import { readFileSync as read, readdirSync } from 'node:fs';
 
 const ROOT = new URL('..', import.meta.url).pathname;
 
@@ -126,7 +126,7 @@ print(json.dumps([{k: p[k] for k in ('id','name','subject','unit','order','count
 const bySub = s => real.filter(p => p.subject === s);
 ok('수학 9단원', bySub('수학').length === 9);
 ok('한국사 8단원', bySub('한국사').length === 8);
-ok('영어 1단원 — 아이가 실제로 외우는 주차 단어장', bySub('영어').length === 1);
+ok(`영어 ${bySub('영어').length}단원 — 아이가 실제로 외우는 주차 단어장`, bySub('영어').length >= 1);
 ok('전부 단원 번호가 있다 — 진도 관리 대상이다',
   real.every(p => p.subject && p.unit));
 ok('문제가 하나도 안 빠졌다 (경고 0)', real.every(p => !p.warnings.length));
@@ -135,7 +135,12 @@ ok('수학이 1-3부터 2-5까지 순서대로',
   bySub('수학').map(p => p.unit).join(' ') === '1-3 1-4 1-5 1-6 2-1 2-2 2-3 2-4 2-5');
 ok('한국사가 1-1부터 2-3까지 순서대로',
   bySub('한국사').map(p => p.unit).join(' ') === '1-1 1-2 1-3 1-4 1-5 2-1 2-2 2-3');
-ok('영어 단원 번호는 챕터 번호', bySub('영어').map(p => p.unit).join(' ') === '12');
+/* 영어는 학기-단원이 아니라 **주차 챕터 번호** 하나다. 매주 파일이 하나씩 늘기 때문에
+   개수를 못 박지 않는다 — 못 박으면 엄마가 단어장을 넣을 때마다 배포가 막힌다. */
+ok(`영어 단원 번호는 챕터 번호 — ${bySub('영어').map(p => p.unit).join(' ')}`,
+  bySub('영어').every(p => /^\d+$/.test(p.unit)));
+ok('영어 챕터가 번호순으로 정렬된다',
+  bySub('영어').map(p => +p.unit).every((n, i, a) => !i || a[i - 1] < n));
 
 /* 수학은 손으로 쓰지 않고 계산해서 만든다. 답이 틀리면 아이가 맞게 답하고 틀린 것이 된다. */
 const mathCheck = execFileSync('python3', ['-c', `
@@ -198,13 +203,19 @@ print(json.dumps(out, ensure_ascii=False))`], { cwd: ROOT, encoding: 'utf8' }));
 const enQs = EN.flatMap(p => p.problems);
 const byGroup = g => enQs.filter(q => q.group === g);
 
+/* 낱말 수는 세어서 쓴다. 매주 단어장이 하나씩 늘어난다. */
+const EN_WORDS = readdirSync(ROOT + 'content/problems/영어')
+  .filter(f => f.endsWith('.md'))
+  .reduce((n, f) => n + (read(ROOT + 'content/problems/영어/' + f, 'utf8')
+    .match(/^## /gm) || []).length, 0);
+
 ok('읽다가 건너뛴 것이 없다', EN.every(p => !p.warnings.length));
 ok(`${enQs.length}문제`, enQs.length >= 50);
 ok('여섯 갈래가 다 있다',
   ['문장 넣기', '뜻 알기', '비슷한 말', '뜻 고르기', '반대말', '철자 고르기']
     .every(g => byGroup(g).length));
-ok('문장 넣기와 뜻 알기는 단어 수만큼 있다 — 이 둘은 모든 낱말에 나와야 한다',
-  byGroup('문장 넣기').length === 12 && byGroup('뜻 알기').length === 12);
+ok(`문장 넣기와 뜻 알기는 단어 수(${EN_WORDS})만큼 있다 — 이 둘은 모든 낱말에 나와야 한다`,
+  byGroup('문장 넣기').length === EN_WORDS && byGroup('뜻 알기').length === EN_WORDS);
 ok('기본은 문장 넣기·뜻 알기·비슷한 말, 심화는 나머지',
   byGroup('문장 넣기').every(q => !q.deep) && byGroup('비슷한 말').every(q => !q.deep) &&
   byGroup('철자 고르기').every(q => q.deep) && byGroup('반대말').every(q => q.deep));
@@ -224,33 +235,35 @@ if (leaky.length) console.log('     ', leaky.slice(0, 3).map(q => q.prompt).join
    clever의 오답에 dumb이 들어가는 것은 **일부러다** — 뜻만이 아니라 방향을 묻는다. */
 const words = JSON.parse(execFileSync('python3', ['-c', `
 import json, pathlib, packs
-text = (pathlib.Path('content/problems/영어') / '12 단어장.md').read_text(encoding='utf-8')
-name, rows, w = packs.parse_wordbook(text, 'x')
-import re
 out = {}
-cur = None
-for line in text.splitlines():
-    h = packs.HEAD_RE.match(line.strip())
-    if h: cur = h.group(1); out[cur] = {'syn': [], 'ant': []}
-    elif cur and line.startswith('유의어:'): out[cur]['syn'] = [x.strip() for x in line.split(':',1)[1].split(',') if x.strip()]
-    elif cur and line.startswith('반의어:'): out[cur]['ant'] = [x.strip() for x in line.split(':',1)[1].split(',') if x.strip()]
+for f in sorted(pathlib.Path('content/problems/영어').glob('*.md')):
+    cur = None
+    for line in f.read_text(encoding='utf-8').splitlines():
+        h = packs.HEAD_RE.match(line.strip())
+        if h: cur = h.group(1); out[cur] = {'syn': [], 'ant': []}
+        elif cur and line.startswith('유의어:'): out[cur]['syn'] = [x.strip() for x in line.split(':',1)[1].split(',') if x.strip()]
+        elif cur and line.startswith('반의어:'): out[cur]['ant'] = [x.strip() for x in line.split(':',1)[1].split(',') if x.strip()]
 print(json.dumps(out, ensure_ascii=False))`], { cwd: ROOT, encoding: 'utf8' }));
 
+const headOf = q => words[q.prompt.split(' —')[0]];
+ok('비슷한 말·반대말의 낱말을 단어장에서 다 찾는다',
+  [...byGroup('비슷한 말'), ...byGroup('반대말')].every(headOf));
+
 const synBad = byGroup('비슷한 말').filter(q => {
-  const w = words[q.prompt.split(' —')[0]];
+  const w = headOf(q) || { syn: [], ant: [] };
   return q.choices.some(c => c !== q.answer && w.syn.includes(c));
 });
 ok('비슷한 말의 오답에 진짜 유의어가 섞여 있지 않다', !synBad.length);
 
 const antBad = byGroup('반대말').filter(q => {
-  const w = words[q.prompt.split(' —')[0]];
+  const w = headOf(q) || { syn: [], ant: [] };
   return q.choices.some(c => c !== q.answer && w.ant.includes(c));
 });
 ok('반대말의 오답에 진짜 반의어가 섞여 있지 않다', !antBad.length);
 
 ok('비슷한 말 문제에는 그 낱말의 반대말이 오답으로 들어간다 — 방향을 묻는다',
   byGroup('비슷한 말').some(q => {
-    const w = words[q.prompt.split(' —')[0]];
+    const w = headOf(q) || { syn: [], ant: [] };
     return w.ant.length && q.choices.some(c => w.ant.includes(c));
   }));
 
