@@ -7,6 +7,7 @@ const BASE_REWARD = 3;    // 풀어보기만 해도
 const BONUS_REWARD = 3;   // 맞추면 조금 더
 const BOARD_SIZE = 12;    // 도감 한 판
 const BOARD_STAR = 3;     // 한 판을 다 채우면
+const GOAL_STAR = 1;      // 오늘 몫을 다 하면 (하루 한 번)
 const PENDING = 'gugudan-pending';
 const LAST_ID = 'gugudan-last-profile';
 
@@ -340,7 +341,9 @@ function renderHome() {
       `<p class="sub">${finished ? '오늘 몫은 다 했어. 내일 또 보자!'
         : done > 0 ? '조금만 더 하면 오늘 끝이야' : esc(say('시작') || '오늘도 같이 해볼까?')}</p>` +
       '<div class="prog">' +
-        `<div class="lbl"><span>오늘</span><span>${done} / ${goal()}</span></div>` +
+        /* 다 하면 별을 받는다는 것을 **미리** 보여준다. 끝나고 알려주면 오늘은 늦다. */
+        `<div class="lbl"><span>오늘 ${P.daily.goalStar ? `— ${STAR_ICON} 받았어` : `· 다 하면 ${STAR_ICON}${GOAL_STAR}`}</span>` +
+          `<span>${done} / ${goal()}</span></div>` +
         `<div class="track"><div class="fill" style="width:${pct}%"></div></div>` +
       '</div>' +
     '</div>' +
@@ -478,6 +481,7 @@ function answer(picked) {
   P.daily.grass = (P.daily.grass || 0) + q.gain;
   if (right) P.daily.right = (P.daily.right || 0) + 1;
   P.totals.solved++;
+  const goalStar = catchUpGoal();
 
   const mastered = applyResult(INDEX[q.key], P.facts[q.key], right, q.hinted, today(), Date.now() - askedAt);
   if (mastered) {
@@ -491,6 +495,8 @@ function answer(picked) {
     setTimeout(() => toast(tier ? '가게에 새로운 게 들어왔어!'
                                 : board ? `도감 한 판을 다 채웠어! 별 ${board}개`
                                 : (say('마스터') || '이건 이제 완전히 외웠어!')), 400);
+  } else if (goalStar) {
+    setTimeout(() => toast(`오늘 몫을 다 했어! 별 ${goalStar}개`), 400);
   }
 
   saveSoon();
@@ -707,6 +713,19 @@ function exchange(grass) {
 
 /* ============ 도감 ============ */
 
+/* 오늘 몫(하루 목표)을 채우면 별 1개. **하루에 한 번뿐**이다.
+
+   `goalStar` 표시는 P.daily에 있으므로 rollDay가 날짜를 넘길 때 저절로 지워진다.
+   더 푼다고 또 주지 않고, **한 번 준 것을 도로 빼지도 않는다** — 부모가 목표를
+   20에서 30으로 올린 날 이미 받은 별이 사라지면 아이는 이유를 알 수 없다 (원칙 2.1). */
+function catchUpGoal() {
+  if (P.daily.goalStar || P.daily.solved < goal()) return 0;
+  P.daily.goalStar = true;
+  P.wallet.star += GOAL_STAR;
+  P.daily.star = (P.daily.star || 0) + GOAL_STAR;
+  return GOAL_STAR;
+}
+
 /* 판 보상은 더하기만 한다. 이미 받은 것을 다시 계산해 줄이는 코드를 만들지 마세요 —
    상점 단계와 별이 같이 줄어들고, 어제까지 살 수 있던 물건이 사라집니다 (원칙 2.1). */
 function catchUpBoards() {
@@ -828,6 +847,7 @@ function renderDone() {
       me('happy', 'hop') +
       '<h1 class="sheepname">오늘 끝!</h1>' +
       `<p class="sub">${esc(say('끝') || goal() + '문제 다 했어. 잘했어!')}</p>` +
+      (P.daily.goalStar ? `<p class="mt" style="font-family:Jua,sans-serif;font-size:22px">오늘 몫을 다 해서 ${STAR_ICON} ${GOAL_STAR}개를 받았어</p>` : '') +
       `<p class="mt" style="font-family:Jua,sans-serif;font-size:22px;color:var(--grass-deep)">지금까지 모은 풀 ${P.wallet.grass}</p>` +
     '</div>' +
     '<button class="btn sun mt2" data-go="shop">가게 구경하기</button>' +

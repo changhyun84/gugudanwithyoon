@@ -32,6 +32,13 @@ const ALL_UNITS = process.argv.includes('--all');
 const index0 = () => ALL_UNITS ? buildIndexAll(PACKS) : buildIndex(PACKS);
 const GOAL = 20;
 
+/* 상수는 app.js에서 읽는다 — 두 곳에 두면 반드시 어긋난다 */
+const APP = readFileSync(new URL('../web/app.js', import.meta.url), 'utf8');
+// `|| d` 로 쓰지 마세요 — 0으로 꺼둔 값이 슬그머니 기본값으로 살아납니다
+const num = (re, d) => { const m = re.exec(APP); return m ? Number(m[1]) : d; };
+const GOAL_STAR = num(/const GOAL_STAR = (\d+)/, 1);
+const RECENT_KEYS = num(/const RECENT_KEYS = (\d+)/, 12);
+
 /* 마스터리별 정답률·힌트 사용률 — 모르는 것일수록 힌트를 더 쓴다 */
 const P_RIGHT = [0.45, 0.62, 0.78, 0.88, 0.95];
 const P_HINT  = [0.45, 0.30, 0.15, 0.06, 0.02];
@@ -69,7 +76,7 @@ function simulate({ story = false, wishes = true, allowance = true, days = DAYS 
 
     for (let i = 0; i < GOAL; i++) {
       const q = makeQuestion(index, facts, recent, today);
-      recent.push(q.key); if (recent.length > 3) recent.shift();
+      recent.push(q.key); if (recent.length > RECENT_KEYS) recent.shift();
       const f = facts[q.key];
       const hint  = Math.random() < P_HINT[f.m];
       const right = Math.random() < P_RIGHT[f.m] + (hint ? 0.12 : 0);
@@ -81,6 +88,7 @@ function simulate({ story = false, wishes = true, allowance = true, days = DAYS 
       }
     }
 
+    star += GOAL_STAR;                                             // 오늘 몫을 다 함 (하루 한 번)
     if (story) { story12 += 2; while (story12 >= 12) { story12 -= 12; star += 3; } }  // 이야기 판 (6C)
     if ((d + 1) % 7 === 0) star += 3;                              // 7일 누적 출석
     for (const [pid, ks] of Object.entries(keysOf))                // 팩 전체 마스터
