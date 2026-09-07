@@ -23,17 +23,23 @@ const ok = (name, cond) => cond
   : (fail++, console.log('  ✗', name));
 const group = name => console.log(`\n${name}`);
 
+/* `globalThis.X = ...` 대신 defineProperty. node 21이 `navigator`를 전역에 들이면서
+   대입이 CI(node 22)에서만 TypeError로 터진 적이 있습니다 (구현-현황 40장).
+   `localStorage`가 다음 차례입니다 — node에 이미 실험 기능으로 들어와 있습니다. */
+const def = (name, value) =>
+  Object.defineProperty(globalThis, name, { value, configurable: true, writable: true });
+
 /* ── 정적 모드 (GitHub Pages) ── */
 const bag = {};
-globalThis.window = globalThis;
-globalThis.GUGUDAN_STATIC = true;
-globalThis.localStorage = {
+def('window', globalThis);
+def('GUGUDAN_STATIC', true);
+def('localStorage', {
   getItem: k => bag[k] ?? null,
   setItem: (k, v) => { bag[k] = String(v); },
   removeItem: k => { delete bag[k]; },
-};
+});
 const content = JSON.parse(readFileSync(join(ROOT, 'dist/content.json'), 'utf8'));
-globalThis.fetch = async () => ({ ok: true, json: async () => content });
+def('fetch', async () => ({ ok: true, json: async () => content }));
 
 const tmp = mkdtempSync(join(tmpdir(), 'gugudan-race-'));
 for (const f of ['store.js', 'engine.js'])

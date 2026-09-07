@@ -52,6 +52,7 @@ jobs:
       # v3을 쓰면 v4(Node 20)를 불러서 경고가 계속 납니다.
       - name: 검사
         run: |
+          node -v; python3 -V          # 손과 CI의 버전이 다르면 여기서만 터지는 것이 생긴다
           for t in test/*.mjs; do echo "--- $t"; node "$t"; done
 
       - name: 빌드

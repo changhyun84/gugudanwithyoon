@@ -66,15 +66,21 @@ ok('빌드 날짜가 있다', !!C.builtAt);
 /* ── 정적 모드로 실제 왕복 ── */
 group('정적 모드 — 브라우저 없이 왕복시킨다');
 
+/* `globalThis.X = ...` 대신 defineProperty. node 21이 `navigator`를 전역에 들이면서
+   대입이 CI(node 22)에서만 TypeError로 터진 적이 있습니다 (구현-현황 40장).
+   `localStorage`가 다음 차례입니다 — node에 이미 실험 기능으로 들어와 있습니다. */
+const def = (name, value) =>
+  Object.defineProperty(globalThis, name, { value, configurable: true, writable: true });
+
 const mem = new Map();
-globalThis.localStorage = {
+def('localStorage', {
   getItem: k => (mem.has(k) ? mem.get(k) : null),
   setItem: (k, v) => mem.set(k, String(v)),
   removeItem: k => mem.delete(k),
-};
-globalThis.window = { GUGUDAN_STATIC: true };
-globalThis.fetch = async url =>
-  ({ json: async () => JSON.parse(readFileSync(join(DIST, String(url).replace(/^\.\//, '')), 'utf8')) });
+});
+def('window', { GUGUDAN_STATIC: true });
+def('fetch', async url =>
+  ({ json: async () => JSON.parse(readFileSync(join(DIST, String(url).replace(/^\.\//, '')), 'utf8')) }));
 
 const tmp = mkdtempSync(join(tmpdir(), 'gugudan-static-'));
 writeFileSync(join(tmp, 'store.mjs'), readFileSync(join(ROOT, 'web/store.js')));

@@ -120,7 +120,7 @@ node test/t_book.mjs       # 30개 — 도감. 판 보상이 줄어드는 경로
 node test/t_shop.mjs       # 43개 — 상점 단계·전용 아이템·다음 단계 미리보기
 node test/t_wish.mjs       # 33개 — 배경·소원권. 받은 소원권이 사라지지 않는지
 node test/t_allow.mjs      # 24개 — 용돈. 화폐가 풀인지, 주 1회인지
-node test/t_units.mjs      # 153개 — 과목·단원·진도·보기 품질·난이도·유형 반복·영어 단어장·문제 파일 검산
+node test/t_units.mjs      # 158개 — 과목·단원·진도·보기 품질·난이도·유형 반복·영어 단어장·문제 파일 검산
 node test/t_parent.mjs     # 37개 — 부모 화면 정리·풀 별 주기·난이도·이름
 node test/t_race.mjs       # 25개 — 부모와 아이가 동시에 쓸 때. 서로 덮어쓰지 않는지
 node test/t_parentrun.mjs  # 27개 — 부모 화면을 **실제로 실행**. 두 모드 다. 조용히 죽는 걸 잡는다
@@ -128,7 +128,8 @@ node test/t_backup.mjs     # 34개 — 내보내기·되돌리기·PWA
 node test/t_static.mjs     # 53개 — 정적 배포. 두 모드가 갈라지지 않았는지
 node test/t_daily.mjs      # 17개 — 하루 목표 별. 하루 한 번인지, 목표를 바꿔도 안 빼앗는지
 node test/t_sweep.mjs      # 24개 — 한 바퀴 훑기. 그 단원이 하나도 안 빠지는지
-node test/t_apprun.mjs     # 23개 — 아이 화면을 **실제로 실행**. 56문제를 끝까지 걸어간다
+node test/t_apprun.mjs     # 25개 — 아이 화면을 **실제로 실행**. 56문제를 끝까지 걸어간다
+node --import sim/node22.mjs test/t_apprun.mjs   # CI(node 22) 조건으로. 손이 node 18이면 이걸로 한 번 더
 node sim/60days.mjs 180    # 보상 균형. 가격표를 characters.js·backgrounds.js에서 그대로 읽는다
 node sim/repeat.mjs        # 문제·유형 반복과 난이도별 비중. "또 이거" 소리가 나오면 이것부터
 ```

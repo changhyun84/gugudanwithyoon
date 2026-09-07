@@ -54,28 +54,36 @@ function makeEl(id) {
   return el;
 }
 
+/* **`globalThis.X = ...` 로 쓰지 마세요.**
+
+   node 21부터 `navigator`가 **setter 없는 getter**로 전역에 있습니다. 모듈은 strict라
+   대입이 조용히 무시되지 않고 `TypeError`로 터집니다. 손에서는(node 18) 멀쩡하고
+   **CI에서만(node 22) 터집니다** (구현-현황 40장). defineProperty는 양쪽 다 됩니다. */
+const def = (name, value) =>
+  Object.defineProperty(globalThis, name, { value, configurable: true, writable: true });
+
 async function boot(profile) {
   const app = makeEl('app'), toast = makeEl('toast');
   const els = { app, toast };
   const root = makeEl('html');
   root.style = new Proxy({}, { get: (t, k) => (k === 'setProperty' ? () => {} : t[k]), set: () => true });
-  globalThis.document = { getElementById: id => els[id] ?? null,
-                          querySelectorAll: () => [], querySelector: () => null,
-                          createElement: () => makeEl('tmp'),
-                          documentElement: root, body: makeEl('body') };
-  globalThis.addEventListener = () => {};
-  globalThis.navigator = { standalone: false, sendBeacon: () => true, userAgent: 'node' };
-  globalThis.matchMedia = () => ({ matches: false, addEventListener() {}, addListener() {} });
-  globalThis.scrollTo = () => {};
-  globalThis.confirm = () => true;
-  globalThis.window = globalThis;
-  globalThis.GUGUDAN_STATIC = true;
+  def('document', { getElementById: id => els[id] ?? null,
+                    querySelectorAll: () => [], querySelector: () => null,
+                    createElement: () => makeEl('tmp'),
+                    documentElement: root, body: makeEl('body') });
+  def('addEventListener', () => {});
+  def('navigator', { standalone: false, sendBeacon: () => true, userAgent: 'node' });
+  def('matchMedia', () => ({ matches: false, addEventListener() {}, addListener() {} }));
+  def('scrollTo', () => {});
+  def('confirm', () => true);
+  def('window', globalThis);
+  def('GUGUDAN_STATIC', true);
   const bag = {};
-  globalThis.localStorage = { getItem: k => bag[k] ?? null,
-                              setItem: (k, v) => { bag[k] = String(v); },
-                              removeItem: k => { delete bag[k]; } };
+  def('localStorage', { getItem: k => bag[k] ?? null,
+                        setItem: (k, v) => { bag[k] = String(v); },
+                        removeItem: k => { delete bag[k]; } });
   const content = JSON.parse(readFileSync(join(ROOT, 'dist/content.json'), 'utf8'));
-  globalThis.fetch = async () => ({ ok: true, json: async () => content });
+  def('fetch', async () => ({ ok: true, json: async () => content }));
   bag['gugudan-profiles'] = JSON.stringify([profile.id]);
   bag[`gugudan-profile-${profile.id}`] = JSON.stringify(profile);
 
@@ -111,6 +119,10 @@ seed.progress = { units: ['12-단어장', '13-단어장'], level: '섞어' };
 group('아이 화면이 켜지는가');
 
 const { app, bag } = await boot(structuredClone(seed));
+/* 흉내가 걸렸는지 먼저 본다. node 버전에 따라 대입이 막히면 여기서 바로 드러난다. */
+ok('전역 흉내가 실제로 걸렸다 — node 버전이 달라도',
+  globalThis.navigator.standalone === false && globalThis.window === globalThis &&
+  typeof globalThis.localStorage.getItem === 'function');
 ok('홈 화면이 그려진다 — 모듈이 조용히 죽지 않았다', app.innerHTML.length > 200);
 ok('문제 풀러 가기 버튼이 있다', has(app, '#play'));
 
@@ -190,6 +202,20 @@ ok('단원이 하나여도 «무엇을 풀까»로 간다', has(solo.app, '[data
 ok('과목 고르는 단계는 건너뛴다 — 고를 게 하나인 화면은 헛걸음이다',
   !has(solo.app, '[data-into]'));
 ok('그냥 풀기도 그대로 된다', has(solo.app, '[data-pack]'));
+
+group('다시는 이렇게 터지지 않게');
+
+/* 이 검사는 «검사에 대한 검사»입니다. node 21이 `navigator`를 전역에 들이면서
+   `globalThis.navigator = ...` 가 CI에서만 터졌습니다. 손에는 node 18, CI에는 node 22.
+   다음에 어떤 이름이 전역이 될지는 모르지만, **대입 대신 defineProperty**면 안 터집니다. */
+const { readdirSync } = await import('node:fs');
+const offenders = readdirSync(join(ROOT, 'test'))
+  .filter(f => f.endsWith('.mjs'))
+  .filter(f => /^\s*globalThis\.\w+\s*=[^=]/m.test(readFileSync(join(ROOT, 'test', f), 'utf8')))
+  .map(f => 'test/' + f);
+ok('어떤 검사도 globalThis에 **대입**하지 않는다 — defineProperty를 쓴다',
+  !offenders.length);
+if (offenders.length) console.log('     ', offenders.join(' / '));
 
 console.log(`\n${pass}개 통과, ${fail}개 실패`);
 process.exit(fail ? 1 : 0);

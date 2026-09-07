@@ -22,6 +22,12 @@ const ok = (name, cond) => cond
   : (fail++, console.log('  ✗', name));
 const group = name => console.log(`\n${name}`);
 
+/* **`globalThis.X = ...` 로 쓰지 마세요.** node 21의 `navigator`가 그랬듯이, 어제까지
+   없던 이름이 setter 없는 getter로 전역에 생기면 대입이 TypeError로 터집니다.
+   손에서는 멀쩡하고 CI에서만 터집니다 (구현-현황 40장). `localStorage`가 다음 차례입니다. */
+const def = (name, value) =>
+  Object.defineProperty(globalThis, name, { value, configurable: true, writable: true });
+
 /* ── 아주 작은 DOM ── */
 function makeDom() {
   const ids = [...HTML.matchAll(/id="([A-Za-z0-9]+)"/g)].map(m => m[1]);
@@ -44,37 +50,37 @@ function makeDom() {
   for (const m of HTML.matchAll(/id="([A-Za-z0-9]+)"[^>]*value="([^"]*)"/g))
     if (els.has(m[1])) els.get(m[1]).value = m[2];
 
-  globalThis.document = { getElementById: id => els.get(id) ?? null,
-                          querySelectorAll: () => [], querySelector: () => null,
-                          createElement: () => mk('tmp'), body: mk('body') };
-  globalThis.addEventListener = () => {};
-  globalThis.confirm = () => true;
-  globalThis.CSS = { escape: s => s };
-  globalThis.window = globalThis;
-  globalThis.GUGUDAN_STATIC = true;
+  def('document', { getElementById: id => els.get(id) ?? null,
+                    querySelectorAll: () => [], querySelector: () => null,
+                    createElement: () => mk('tmp'), body: mk('body') });
+  def('addEventListener', () => {});
+  def('confirm', () => true);
+  def('CSS', { escape: s => s });
+  def('window', globalThis);
+  def('GUGUDAN_STATIC', true);
   const store = {};
-  globalThis.localStorage = {
+  def('localStorage', {
     getItem: k => store[k] ?? null,
     setItem: (k, v) => { store[k] = String(v); },
     removeItem: k => { delete store[k]; },
-  };
+  });
   return { els, store };
 }
 
 async function run(seedProfile, mode = 'static') {
   const { els, store } = makeDom();
   const content = JSON.parse(readFileSync(join(ROOT, 'dist/content.json'), 'utf8'));
-  globalThis.GUGUDAN_STATIC = mode === 'static';
+  def('GUGUDAN_STATIC', mode === 'static');
 
   if (mode === 'static') {
-    globalThis.fetch = async () => ({ ok: true, json: async () => content });
+    def('fetch', async () => ({ ok: true, json: async () => content }));
     if (seedProfile) {
       store['gugudan-profiles'] = JSON.stringify([seedProfile.id]);
       store[`gugudan-profile-${seedProfile.id}`] = JSON.stringify(seedProfile);
     }
   } else {
     // 집 서버 모드 — /api/* 를 흉내 낸다. 두 모드가 갈라지면 여기서 잡힌다.
-    globalThis.fetch = async (url) => {
+    def('fetch', async (url) => {
       const body =
         url === '/api/bootstrap'
           ? { profiles: seedProfile ? [{ id: seedProfile.id, displayName: seedProfile.displayName }] : [],
@@ -89,7 +95,7 @@ async function run(seedProfile, mode = 'static') {
               wishes: { file: 'wishes.csv', list: content.wishes, warnings: content.wishWarnings } }
         : {};
       return { ok: true, json: async () => body };
-    };
+    });
   }
 
   const tmp = mkdtempSync(join(tmpdir(), 'gugudan-parentrun-'));
