@@ -476,8 +476,11 @@ const PACKS = [
 ];
 const opened = (progress) => [...E.openPacks(PACKS, progress)].sort().join(',');
 
-ok('진도를 안 정하면 과목마다 첫 단원만',
-  opened(null) === 'extra,flat,gugudan,h1,m1');
+/* 진도를 안 정하면 START_UNITS를 본다. 여기 가짜 수학 단원은 1-1·1-2·1-3·1-10이라
+   START_UNITS의 '1-3'만 걸리고, 한국사는 하나도 안 걸려 첫 단원으로 물러선다. */
+ok('진도를 안 정하면 시작 단원이 열린다', opened(null) === 'extra,flat,gugudan,h1,m3');
+ok('시작 단원에 없는 과목은 첫 단원만 — 빈 화면이 되면 안 된다',
+  E.openPacks(PACKS, null).has('h1') && !E.openPacks(PACKS, null).has('h2'));
 ok('폴더 밖은 늘 열려 있다', E.openPacks(PACKS, null).has('flat'));
 ok('단원 번호가 없으면 진도 관리 대상이 아니다', E.openPacks(PACKS, null).has('extra'));
 
@@ -485,19 +488,33 @@ ok('수학 1-3까지', opened({ 수학: '1-3' }) === 'extra,flat,gugudan,h1,m1,m
 ok('1-3에서는 1-10이 안 열린다 — 자연 정렬',
   !E.openPacks(PACKS, { 수학: '1-3' }).has('m10'));
 ok('1-10까지 열면 1-2·1-3도 같이', opened({ 수학: '1-10' }) === 'extra,flat,gugudan,h1,m1,m10,m2,m3');
-ok('과목마다 따로', opened({ 한국사: '1-2' }) === 'extra,flat,gugudan,h1,h2,m1');
+ok('과목마다 따로', opened({ 한국사: '1-2' }) === 'extra,flat,gugudan,h1,h2,m3');
 ok('진도를 되돌리면 다시 닫힌다 — 사라지는 것은 없다(16.4)',
   opened({ 수학: '1-1' }) === 'extra,flat,gugudan,h1,m1');
 
 /* ── 진도를 한 번도 안 정했을 때 (2026-08-25) ── */
 group('시작 단원 — 부모가 아이 학교 진도에 맞춰 정한 값');
 
-ok('수학은 2-3과 2-4', E.START_UNITS['수학'].join() === '2-3,2-4');
+ok('수학은 1-3·1-4·2-3·2-4', E.START_UNITS['수학'].join() === '1-3,1-4,2-3,2-4');
 ok('한국사는 1-3과 1-4', E.START_UNITS['한국사'].join() === '1-3,1-4');
+
+/* 원의 지름은 반지름 × 2, 반지름은 지름 ÷ 2다. 연산이 막히면 원도 분수도 막힌다.
+   그런데 그 연습은 1학기 단원에 있다 — 학교 진도만 따라가면 영영 안 열린다 (39장). */
+ok('학교 진도(2학기)와 함께 곱셈·나눗셈(1학기)이 처음부터 열려 있다',
+  ['1-3', '1-4'].every(u => E.START_UNITS['수학'].includes(u)));
 
 const realOpen = [...E.openPacks(real.map(p => ({ ...p })), null)].sort();
 ok(`실제 파일로 열리는 것 — ${realOpen.join(' · ')}`,
-  realOpen.join(',') === '1-3-삼국의-시작,1-4-삼국의-전성기,12-단어장,2-3-원,2-4-분수,gugudan');
+  realOpen.join(',') === '1-3-나눗셈,1-3-삼국의-시작,1-4-곱셈,1-4-삼국의-전성기,12-단어장,2-3-원,2-4-분수,gugudan');
+/* 단원만 열고 끝나면 소용없다. 그 단원에 빈칸 문제가 실제로 들어 있어야 한다. */
+const drillIn = execFileSync('python3', ['-c', `
+import json, pathlib, packs
+want = {'1-3', '1-4'}
+n = sum(1 for p in packs.scan(pathlib.Path('content/problems'))
+        if p['subject'] == '수학' and p['unit'] in want
+        for q in p['problems'] if '?' in q['prompt'] and ('×' in q['prompt'] or '÷' in q['prompt']))
+print(n)`], { cwd: ROOT, encoding: 'utf8' }).trim();
+ok(`처음부터 열리는 1-3·1-4 안에 빈칸 곱셈·나눗셈이 ${drillIn}문제 있다`, Number(drillIn) >= 80);
 ok('목록에 없는 과목(영어)은 첫 단원만', realOpen.includes('12-단어장'));
 
 const START = [
