@@ -142,25 +142,68 @@ ok(`영어 단원 번호는 챕터 번호 — ${bySub('영어').map(p => p.unit)
 ok('영어 챕터가 번호순으로 정렬된다',
   bySub('영어').map(p => +p.unit).every((n, i, a) => !i || a[i - 1] < n));
 
-/* 수학은 손으로 쓰지 않고 계산해서 만든다. 답이 틀리면 아이가 맞게 답하고 틀린 것이 된다. */
-const mathCheck = execFileSync('python3', ['-c', `
+/* 수학은 손으로 쓰지 않고 계산해서 만든다. 답이 틀리면 **아이가 맞게 답하고 틀린 것**이 된다.
+
+   예전 검사는 `re.fullmatch`로 `12 × 3` 꼴만 봤습니다. 그래서 `7 × ? = 56` 같은 빈칸 문제는
+   **한 개도 검산되지 않고 있었습니다** — 하필 새로 180개를 넣은 그 꼴입니다.
+   이제 «순수한 식은 하나도 빠짐없이 검산됐는가»까지 셉니다. 안 본 것이 있으면 실패입니다. */
+const mathCheck = JSON.parse(execFileSync('python3', ['-c', `
+import csv, json, pathlib, re
+from fractions import Fraction
+
+SUF = ' 일 때 ?는 얼마일까?'
+PURE = re.compile(r'[\\d\\s×÷+\\-?=]+')
+
+def value(expr):
+    # 나눗셈은 분수로 계산한다. //로 계산하면 나눗셈 실수가 가려진다.
+    expr = expr.replace('×', '*').replace('÷', '/').replace('−', '-')
+    expr = re.sub(r'(\\d+)', r'F(\\1)', expr)
+    return eval(expr, {'__builtins__': {}}, {'F': Fraction})
+
+bad, missed = [], []
+checked = 0
+for f in sorted(pathlib.Path('content/problems/수학').glob('*.csv')):
+    for r in csv.DictReader(f.open(encoding='utf-8')):
+        q, a = r['문제'].strip(), r['정답'].strip()
+        m = re.fullmatch(r'(\\d+) ÷ (\\d+)의 (몫|나머지)', q)
+        if m:
+            x, y = int(m.group(1)), int(m.group(2))
+            want = x // y if m.group(3) == '몫' else x % y
+            checked += 1
+            if str(want) != a: bad.append(q)
+            continue
+        core = q[:-len(SUF)] if q.endswith(SUF) else q
+        if not PURE.fullmatch(core):
+            continue
+        if not a.lstrip('-').isdigit():
+            missed.append(q); continue
+        checked += 1
+        try:
+            if '=' in core:
+                lhs, rhs = core.replace('?', a).split('=')
+                if value(lhs) != value(rhs): bad.append(q)
+            elif value(core) != Fraction(int(a)):
+                bad.append(q)
+        except Exception:
+            missed.append(q)
+print(json.dumps({'bad': bad[:5], 'nbad': len(bad), 'checked': checked,
+                  'missed': missed[:5], 'nmissed': len(missed)}, ensure_ascii=False))`],
+  { cwd: ROOT, encoding: 'utf8' }));
+
+ok(`수학 계산 ${mathCheck.checked}개를 독립으로 다시 계산해서 전부 맞다`, mathCheck.nbad === 0);
+if (mathCheck.nbad) console.log('     ', mathCheck.bad.join(' / '));
+ok('검산을 건너뛴 순수한 식이 없다 — 안 보는 꼴이 생기면 거기서 틀린다', !mathCheck.nmissed);
+if (mathCheck.nmissed) console.log('     ', mathCheck.missed.join(' / '));
+
+/* 곱셈과 나눗셈을 잇는 다리가 빈칸 꼴이다. 연산이 약한 아이에게는 이게 본진이다 (38장). */
+const blankN = Number(execFileSync('python3', ['-c', `
 import csv, pathlib, re
-bad = 0
+n = 0
 for f in pathlib.Path('content/problems/수학').glob('*.csv'):
     for r in csv.DictReader(f.open(encoding='utf-8')):
-        q, a = r['문제'], r['정답']
-        for pat, fn in [
-            (r'(\\d+) × (\\d+)', lambda x, y: x * y),
-            (r'(\\d+) ÷ (\\d+)$', lambda x, y: x // y if x % y == 0 else None),
-            (r'(\\d+) ÷ (\\d+)의 몫', lambda x, y: x // y),
-            (r'(\\d+) ÷ (\\d+)의 나머지', lambda x, y: x % y),
-        ]:
-            m = re.fullmatch(pat, q)
-            if m:
-                want = fn(int(m.group(1)), int(m.group(2)))
-                if want is None or str(want) != a: bad += 1
-print(bad)`], { cwd: ROOT, encoding: 'utf8' }).trim();
-ok('수학 계산이 전부 맞다 (독립으로 다시 계산)', mathCheck === '0');
+        if '?' in r['문제'] and re.search(r'[×÷]', r['문제']): n += 1
+print(n)`], { cwd: ROOT, encoding: 'utf8' }).trim());
+ok(`빈칸 곱셈·나눗셈이 ${blankN}문제 — 100개는 넘어야 드릴이 된다`, blankN >= 100);
 
 /* ── 응원 메시지 (2026-08-25) ── */
 group('고양이 말투 — 시크하지만 친절한 츤데레');
