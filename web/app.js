@@ -1,7 +1,7 @@
 import { ALL_ITEMS, CHARACTERS, GRASS_ICON, ITEMS, STAR_ICON, charById, charSVG, itemById, slotOf, tierOf } from './characters.js';
 import { BACKGROUNDS, bgById, decoSVG, lookOf } from './backgrounds.js';
 import * as store from './store.js';
-import { TARGETS, factKey, buildIndex, packList, pruneLogs, seedFacts, makeQuestion, applyResult } from './engine.js';
+import { TARGETS, factKey, buildIndex, packList, pruneLogs, seedFacts, makeQuestion, questionOf, applyResult } from './engine.js';
 
 const BASE_REWARD = 3;    // 풀어보기만 해도
 const BONUS_REWARD = 3;   // 맞추면 조금 더
@@ -19,10 +19,8 @@ let MESSAGES = {};        // content/messages.csv
 let WISHES = [];          // content/wishes.csv — 파일이 없으면 소원권 기능이 안 나타난다
 let ALLOW = null;         // 용돈 설정 (data/settings.json). 부모가 켜야 나타난다
 const recent = [];        // 최근 쓴 응원 5개 — 바로 반복되면 금방 질린다
-/* 최근 낸 문제 — 여기 있는 것은 다시 안 낸다.
-   3이었는데 12로 늘렸습니다 (2026-08-24). 3이면 다섯 문제 만에 같은 게 돌아옵니다.
-   12면 최소 간격이 13문제라, 한 판(20문제) 안에서는 거의 안 겹칩니다. */
-/* 최근 이만큼은 다시 안 낸다. 한 판이 20문제이므로 19면 **한 판 안에서 같은 문제를
+/* 최근 낸 문제 — 여기 있는 것은 다시 안 낸다. 3 → 12 (2026-08-24) → 19 (2026-09-02).
+   최근 이만큼은 다시 안 낸다. 한 판이 20문제이므로 19면 **한 판 안에서 같은 문제를
    두 번 보지 않는다**. 12였을 때는 최소 간격이 13이라 한 판에 두 번 나올 수 있었다.
    좁은 풀에서는 engine.js pickKey가 알아서 물러선다 (MIN_CHOICES). */
 const RECENT_KEYS = 19;
@@ -30,6 +28,9 @@ const recentKeys = [];
 let view = 'home', quiz = null, shopTab = 'hat', askedAt = 0, sinceSave = 0;
 let pick = null;          // 자유 모드 — null(전부) / {pack} / {subject}
 let pickSubject = null;   // 과목을 고른 뒤 단원 화면에 머무는 동안
+/* 한 바퀴 훑기 — 시험 전에 그 단원을 통째로 한 번씩. 뽑지 않고 순서대로 낸다.
+   {name, keys, i, wrong[]}. null이면 평소대로 뽑아서 낸다. */
+let sweep = null;
 
 const today = () => new Date().toLocaleDateString('sv-SE');   // 2026-08-16
 const esc = s => String(s).replace(/[<>&"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
@@ -265,6 +266,7 @@ function bind() {
 
 function go(v) {
   if (P) save();
+  if (v !== 'quiz' && v !== 'swept') sweep = null;   // 화면을 벗어나면 훑기는 끝난다
   view = v;
   render();
   scrollTo(0, 0);
@@ -282,6 +284,7 @@ function render() {
   else if (view === 'wish') renderWishes();
   else if (view === 'money') renderAllowance();
   else if (view === 'done') renderDone();
+  else if (view === 'swept') renderSwept();
   else renderHome();
   bind();
 }
@@ -372,7 +375,15 @@ function renderHome() {
   const hide = app.querySelector('#hinthide');
   if (hide) hide.onclick = () => { localStorage.setItem(HOME_HINT, '1'); render(); };
 
-  const play = () => { pickSubject = null; packList(INDEX).length > 1 ? go('pick') : startQuiz(); };
+  /* 단원이 하나뿐이어도 «무엇을 풀까» 화면으로 보낸다 — 거기에 «한 바퀴»가 있다.
+     단원이 하나뿐이면 과목 고르는 단계는 건너뛴다. 고를 게 하나인 화면은 헛걸음이다.
+     구구단만 있는 아이(문제 파일이 없는 집)는 예전처럼 바로 문제로 간다. */
+  const play = () => {
+    const list = packList(INDEX);
+    const subs = [...new Set(list.map(p => p.subject).filter(Boolean))];
+    pickSubject = subs.length === 1 ? subs[0] : null;
+    if (list.length > 1 || subs.length) go('pick'); else startQuiz();
+  };
   app.querySelector('#play').onclick = play;
   const nu = app.querySelector('#newunit');
   if (nu) nu.onclick = play;
@@ -397,7 +408,10 @@ function renderPick() {
     const units = packs.filter(p => p.subject === pickSubject);
     app.innerHTML = topbar(true) + head(pickSubject, '단원을 골라도 되고, 다 섞어도 돼') +
       `<button class="btn go mt2" data-sub="${esc(pickSubject)}">${esc(pickSubject)} 다 섞어서</button>` +
-      units.map(p => `<button class="btn soft mt" data-pack="${esc(p.id)}">${esc(p.name)}</button>`).join('') +
+      units.map(p => '<div class="btnrow">' +
+        `<button class="btn soft wide" data-pack="${esc(p.id)}">${esc(p.name)}</button>` +
+        `<button class="btn soft narrow" data-sweep="${esc(p.id)}" title="이 단원을 통째로 한 번씩">한 바퀴</button>` +
+        '</div>').join('') +
       '<button class="btn soft mt2" id="othersub">다른 것 고르기</button>';
     app.querySelector('#othersub').onclick = () => { pickSubject = null; renderPick(); bind(); };
   } else {
@@ -422,14 +436,41 @@ function renderPick() {
     pick = b.dataset.pack ? { pack: b.dataset.pack } : null;
     startQuiz();
   });
+  app.querySelectorAll('[data-sweep]').forEach(b => b.onclick = () => startSweep(b.dataset.sweep));
 }
 
 /* ============ 퀴즈 ============ */
 
-function startQuiz() { P.settings.newUnits = []; nextQ(); go('quiz'); }
+function startQuiz() { sweep = null; P.settings.newUnits = []; nextQ(); go('quiz'); }
+
+/* 한 바퀴 훑기 — 시험 전에 그 단원을 통째로 한 번씩 (구현-현황 37장).
+
+   평소 출제는 «아직 안 연 문제»를 빼둡니다. 한 번에 배우는 게 너무 많아지지 않게
+   하려는 규칙이고, 그래서 판을 아무리 길게 해도 열린 것만 반복됩니다 —
+   56문제짜리 단어장에서 20문제를 풀든 30문제를 풀든 서로 다른 문제는 열대여섯입니다.
+   훑기는 **뽑지 않습니다.** 팩의 문제를 순서대로 한 번씩 냅니다.
+
+   색인(INDEX)에 있는 것만 훑습니다. 부모가 끈 문제와 난이도 설정은 그대로 지킵니다. */
+function sweepKeys(packId) {
+  return Object.entries(INDEX)
+    .filter(([, e]) => e.packId === packId)
+    .sort((a, b) => a[1].order - b[1].order)
+    .map(([k]) => k);
+}
+
+function startSweep(packId, keys = null) {
+  const list = keys || sweepKeys(packId);
+  if (!list.length) return toast('여기는 지금 풀 문제가 없어');
+  sweep = { name: INDEX[list[0]].packName, keys: list, i: 0, wrong: [], right: 0 };
+  pick = null;
+  P.settings.newUnits = [];
+  nextQ();
+  go('quiz');
+}
 
 function nextQ() {
-  quiz = makeQuestion(INDEX, P.facts, recentKeys, today(), pick);
+  quiz = sweep ? questionOf(INDEX, sweep.keys[sweep.i++])
+               : makeQuestion(INDEX, P.facts, recentKeys, today(), pick);
   recentKeys.push(quiz.key);
   if (recentKeys.length > RECENT_KEYS) recentKeys.shift();
   askedAt = Date.now();
@@ -439,7 +480,9 @@ function renderQuiz() {
   const q = quiz;
   const long = q.prompt.length > 12;
   let body = topbar(true) + '<div class="card">' +
-    `<div class="qhead"><span>오늘 ${P.daily.solved} / ${goal()}</span><span>천천히 해도 괜찮아</span></div>` +
+    (sweep
+      ? `<div class="qhead"><span>${esc(sweep.name)} 한 바퀴 ${sweep.i} / ${sweep.keys.length}</span><span>다 한 번씩 나와</span></div>`
+      : `<div class="qhead"><span>오늘 ${P.daily.solved} / ${goal()}</span><span>천천히 해도 괜찮아</span></div>`) +
     `<div class="question ${long ? 'long' : ''}">${esc(q.prompt)}</div><div class="choices">`;
 
   q.choices.forEach(c => {
@@ -486,6 +529,8 @@ function answer(picked) {
   P.totals.solved++;
   const goalStar = catchUpGoal();
 
+  if (sweep) { if (right && !q.hinted) sweep.right++; else sweep.wrong.push(q.key); }
+
   const mastered = applyResult(INDEX[q.key], P.facts[q.key], right, q.hinted, today(), Date.now() - askedAt);
   if (mastered) {
     P.wallet.star++;
@@ -509,6 +554,7 @@ function answer(picked) {
 }
 
 function advance() {
+  if (sweep) return sweep.i >= sweep.keys.length ? go('swept') : (nextQ(), renderQuiz(), bind());
   if (P.daily.solved >= goal() && P.daily.solved % goal() === 0) return go('done');
   nextQ();
   renderQuiz();
@@ -860,6 +906,39 @@ function renderDone() {
     '</div>';
 
   app.querySelector('#more').onclick = startQuiz;
+}
+
+/* 한 바퀴를 다 돈 뒤. **시험 전에 보는 화면**이라 틀린 것을 먼저 보여준다.
+   점수를 크게 쓰지 않는다 — 원칙 2.1. 못 한 것이 아니라 «다시 볼 것»이다. */
+function renderSwept() {
+  const total = sweep.keys.length;
+  const wrong = [...new Set(sweep.wrong)];
+  const label = k => String(INDEX[k]?.answer ?? '').slice(0, 24);
+  const all = sweep.right === total;
+
+  app.innerHTML = topbar(true) +
+    '<div class="card stage">' +
+      me(all ? 'happy' : '', 'hop') +
+      `<h1 class="sheepname">${esc(sweep.name)} 한 바퀴 끝!</h1>` +
+      `<p class="sub">${total}개를 다 봤어. ${all ? '하나도 안 틀렸어!' : `혼자 맞힌 건 ${sweep.right}개야`}</p>` +
+    '</div>' +
+    (wrong.length
+      ? '<div class="card mt2">' +
+          '<p class="sub" style="margin:0 0 8px">다시 볼 것</p>' +
+          `<p style="font-family:Jua,sans-serif;font-size:20px;line-height:1.7;margin:0">${
+            wrong.map(k => esc(label(k))).join(' · ')}</p>` +
+        '</div>'
+      : '') +
+    (wrong.length ? '<button class="btn go mt2" id="again">틀린 것만 다시 보기</button>' : '') +
+    '<div class="btnrow">' +
+      '<button class="btn soft" id="round">한 바퀴 더</button>' +
+      '<button class="btn soft" data-go="home">집으로</button>' +
+    '</div>';
+
+  const packId = INDEX[sweep.keys[0]]?.packId;
+  const again = app.querySelector('#again');
+  if (again) again.onclick = () => startSweep(packId, wrong);
+  app.querySelector('#round').onclick = () => startSweep(packId);
 }
 
 /* ============ 가게 ============ */

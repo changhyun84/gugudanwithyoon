@@ -63,7 +63,7 @@ content/      problems/수학|한국사/*.csv · messages.csv · wishes.csv
 data/         자동 생성, git 제외
 sim/          60days.mjs (보상 균형) · repeat.mjs (문제 반복) · make-icons.py (아이콘)
               seed-math|history.py (문제 팩) · build-static.py (Pages 배포용 dist/)
-test/         t_book · t_shop · t_wish · t_allow · t_units · t_parent · t_parentrun · t_race · t_backup · t_static · t_daily  .mjs
+test/         t_book · t_shop · t_wish · t_allow · t_units · t_parent · t_parentrun · t_apprun · t_race · t_backup · t_static · t_daily · t_sweep  .mjs
 ```
 
 `ai.py`는 6B에서 새로 생깁니다. **`server.py`에 합치지 마세요** — 외부 호출은 실패하는 코드라 격리합니다.
@@ -127,6 +127,8 @@ node test/t_parentrun.mjs  # 27개 — 부모 화면을 **실제로 실행**. �
 node test/t_backup.mjs     # 34개 — 내보내기·되돌리기·PWA
 node test/t_static.mjs     # 53개 — 정적 배포. 두 모드가 갈라지지 않았는지
 node test/t_daily.mjs      # 17개 — 하루 목표 별. 하루 한 번인지, 목표를 바꿔도 안 빼앗는지
+node test/t_sweep.mjs      # 24개 — 한 바퀴 훑기. 그 단원이 하나도 안 빠지는지
+node test/t_apprun.mjs     # 23개 — 아이 화면을 **실제로 실행**. 56문제를 끝까지 걸어간다
 node sim/60days.mjs 180    # 보상 균형. 가격표를 characters.js·backgrounds.js에서 그대로 읽는다
 node sim/repeat.mjs        # 문제·유형 반복과 난이도별 비중. "또 이거" 소리가 나오면 이것부터
 ```

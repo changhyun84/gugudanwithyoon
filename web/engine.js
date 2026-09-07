@@ -399,7 +399,12 @@ function shuffle(list) {
 }
 
 export function makeQuestion(index, facts, recent, today, want = null) {
-  const key = pickKey(index, facts, [].concat(recent || []), today, want);
+  return questionOf(index, pickKey(index, facts, [].concat(recent || []), today, want));
+}
+
+/* 키 하나로 문제를 짓는다. 뽑기와 따로 떼어둔 이유는 «한 바퀴 훑기»가
+   뽑지 않고 순서대로 내기 때문이다 (구현-현황 37장). */
+export function questionOf(index, key) {
   const e = index[key];
 
   if (e.mul) {

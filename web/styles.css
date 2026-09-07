@@ -60,6 +60,8 @@ h1,h2,h3,.display{font-family:'Jua','Apple SD Gothic Neo',sans-serif;font-weight
 .btn[disabled]{opacity:.45;cursor:default;box-shadow:none;transform:none}
 .btnrow{display:flex;gap:10px;margin-top:12px}
 .btnrow .btn{margin:0}
+.btnrow .btn.wide{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.btnrow .btn.narrow{flex:0 0 auto;padding-left:18px;padding-right:18px;font-size:15px}
 
 /* --- progress --- */
 .prog{margin-top:16px}
