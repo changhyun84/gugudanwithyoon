@@ -22,7 +22,10 @@ const recent = [];        // 최근 쓴 응원 5개 — 바로 반복되면 금�
 /* 최근 낸 문제 — 여기 있는 것은 다시 안 낸다.
    3이었는데 12로 늘렸습니다 (2026-08-24). 3이면 다섯 문제 만에 같은 게 돌아옵니다.
    12면 최소 간격이 13문제라, 한 판(20문제) 안에서는 거의 안 겹칩니다. */
-const RECENT_KEYS = 12;
+/* 최근 이만큼은 다시 안 낸다. 한 판이 20문제이므로 19면 **한 판 안에서 같은 문제를
+   두 번 보지 않는다**. 12였을 때는 최소 간격이 13이라 한 판에 두 번 나올 수 있었다.
+   좁은 풀에서는 engine.js pickKey가 알아서 물러선다 (MIN_CHOICES). */
+const RECENT_KEYS = 19;
 const recentKeys = [];
 let view = 'home', quiz = null, shopTab = 'hat', askedAt = 0, sinceSave = 0;
 let pick = null;          // 자유 모드 — null(전부) / {pack} / {subject}

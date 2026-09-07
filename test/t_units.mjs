@@ -296,6 +296,56 @@ import json, packs
 print(json.dumps({w: packs.misspell(w, 3, []) for w in
       ['startled', 'village', 'toss', 'identical']}, ensure_ascii=False))`],
   { cwd: ROOT, encoding: 'utf8' }));
+/* ── 순서 (2026-09-02) ────────────────────────────────────────
+   엔진은 한 팩에서 **앞의 NEW_AT_ONCE개**만 열어둡니다. 그래서 단어장을 낱말 순서로
+   내면 열린 것이 전부 첫 두 낱말의 문제가 되고, 아이는 12낱말짜리 챕터에서
+   두 낱말만 백 번 풉니다. 실제로 그랬습니다 (구현-현황 36장).
+
+   그래서 순서를 검사합니다 — **문제의 내용이 아니라 순서가 곧 다양성입니다.** */
+const NEW_AT_ONCE = Number(/const NEW_AT_ONCE = (\d+)/.exec(
+  read(new URL('../web/engine.js', import.meta.url), 'utf8'))[1]);
+
+const heads = JSON.parse(execFileSync('python3', ['-c', `
+import json, pathlib, packs
+out = {}
+for p in packs.scan(pathlib.Path('content/problems')):
+    if p['subject'] != '영어': continue
+    words = []
+    cur = None
+    for line in (pathlib.Path('content/problems/영어') / (p['name'] + '.md')).read_text(encoding='utf-8').splitlines():
+        h = packs.HEAD_RE.match(line.strip())
+        if h: cur = h.group(1).lower(); words.append(cur)
+    out[p['name']] = {'words': words,
+        'rows': [{'g': q['group'], 'a': str(q['answer']).lower(), 'p': q['prompt'], 'deep': q['deep']}
+                 for q in sorted(p['problems'], key=lambda q: q['order'])]}
+print(json.dumps(out, ensure_ascii=False))`], { cwd: ROOT, encoding: 'utf8' }));
+
+/* 어느 낱말에 대한 문제인가 — 앞머리(`clever — …`)나 뜻(`"…" — …`)이나 정답에서 찾는다 */
+const wordOfRow = (r, words) => {
+  const m = /^(\w+) — /.exec(r.p);
+  if (m && words.includes(m[1].toLowerCase())) return m[1].toLowerCase();
+  if (words.includes(r.a)) return r.a;
+  return null;
+};
+
+for (const [name, b] of Object.entries(heads)) {
+  const head = b.rows.slice(0, NEW_AT_ONCE);
+  const mine = head.map(r => wordOfRow(r, b.words));
+  ok(`${name} — 한 번에 여는 ${NEW_AT_ONCE}개가 서로 다른 낱말이다`,
+    mine.every(Boolean) && new Set(mine).size === head.length);
+  ok(`${name} — 그 ${NEW_AT_ONCE}개에 갈래가 둘 이상 섞여 있다`,
+    new Set(head.map(r => r.g)).size >= 2);
+}
+
+ok('심화는 뒤에 몰려 있다 — 기본을 지나야 열린다',
+  Object.values(heads).every(b => {
+    const first = b.rows.findIndex(r => r.deep);
+    return first < 0 || b.rows.slice(first).every(r => r.deep);
+  }));
+
+ok('대각선으로 훑어도 문제가 하나도 안 빠진다',
+  Object.values(heads).reduce((n, b) => n + b.rows.length, 0) === enQs.length);
+
 ok('가짜 철자를 세 개씩 만든다', Object.values(spell).every(v => v.length === 3));
 ok('첫 글자는 안 건드린다', Object.entries(spell).every(([w, v]) => v.every(x => x[0] === w[0])));
 
@@ -347,7 +397,10 @@ group('같은 문제가 너무 자주 나오지 않는가');
 
 const appTxt = read(new URL('../web/app.js', import.meta.url), 'utf8');
 const recentN = Number(/const RECENT_KEYS = (\d+)/.exec(appTxt)?.[1]);
-ok(`최근 낸 문제를 ${recentN}개 빼둔다 — 한 판(20문제) 안에서 안 겹치려면 10 이상`, recentN >= 10);
+ok(`최근 낸 문제를 ${recentN}개 빼둔다 — 한 판(20문제) 안에서 안 겹치려면 19 이상`, recentN >= 19);
+ok('빼고 나면 낼 게 없는 좁은 풀에서는 반씩 줄여가며 물러선다 — 곧장 하나로 떨어지지 않는다',
+  /skip = skip\.slice\(-Math\.floor\(skip\.length \/ 2\)\)/.test(
+    read(new URL('../web/engine.js', import.meta.url), 'utf8')));
 ok('빼둔 목록을 실제로 그만큼 유지한다', appTxt.includes('recentKeys.length > RECENT_KEYS'));
 
 const engSrc = read(new URL('../web/engine.js', import.meta.url), 'utf8');
@@ -593,6 +646,59 @@ ok('문자열을 넘기면 팩 하나로 본다 (예전 호출부 호환)', draw
 ok('과목을 골라도 MIN_POOL 보정이 돈다 — 같은 문제만 반복되지 않는다',
   new Set(Array.from({ length: 200 }, () =>
     E.pickKey(idx, facts, [], '2026-09-05', { subject: '수학' }))).size >= 4);
+
+/* ── 실제로 뽑아본다 (2026-09-02) ─────────────────────────────
+   위의 순서 검사는 «파일이 이렇게 생겼는가»입니다. 이건 «그래서 아이가 뭘 보는가»입니다.
+   부모가 단어장 한 권만 켠 채로 한 판(20문제)을 뽑아, **몇 낱말이나 만나는지** 셉니다.
+   이 검사가 없어서 «56문제 중 5, 6개만 나온다»를 아이가 먼저 발견했습니다. */
+group('단어장 한 권만 켜면 한 판에 몇 낱말을 만나는가');
+
+const enPack = real.find(p => p.subject === '영어' && p.unit === '13');
+const enBook = readFileSync(new URL(`../content/problems/영어/${enPack.name}.md`, import.meta.url), 'utf8');
+const enWords = [...enBook.matchAll(/^## (\w+)/gm)].map(m => m[1].toLowerCase());
+const enMeans = {};
+{ let cur = null;
+  for (const l of enBook.split('\n')) {
+    const h = /^## (\w+)/.exec(l);
+    if (h) cur = h[1].toLowerCase();
+    else if (cur && l.startsWith('뜻:')) enMeans[l.slice(2).trim()] = cur;
+  } }
+const wordOfEntry = e => {
+  const m = /^(\w+) — /.exec(e.prompt);
+  if (m && enWords.includes(m[1].toLowerCase())) return m[1].toLowerCase();
+  const d = /^"(.*?)" — /.exec(e.prompt);
+  if (d && enMeans[d[1]]) return enMeans[d[1]];
+  const a = String(e.answer).toLowerCase();
+  return enWords.includes(a) ? a : null;
+};
+
+const enPacks = JSON.parse(execFileSync('python3', ['-c', `
+import json, pathlib, packs
+print(json.dumps([p for p in packs.scan(pathlib.Path('content/problems')) if p['subject'] == '영어'],
+                 ensure_ascii=False, default=str))`], { cwd: ROOT, encoding: 'utf8' }));
+
+function oneRound() {
+  const i2 = E.buildIndex(enPacks, null, { units: [enPack.id], level: '섞어' });
+  const f2 = {}; E.seedFacts(i2, f2);
+  const seen = new Set(), got = new Set();
+  const rec = [];
+  for (let n = 0; n < 20; n++) {
+    const k = E.pickKey(i2, f2, rec, '2026-09-02');
+    seen.add(k);
+    const w = wordOfEntry(i2[k]); if (w) got.add(w);
+    E.applyResult(i2[k], f2[k], Math.random() < 0.8, false, '2026-09-02', 4000);
+    rec.push(k); if (rec.length > recentN) rec.shift();
+  }
+  return { words: got.size, keys: seen.size };
+}
+const rounds = Array.from({ length: 200 }, oneRound);
+const mid = a => a.slice().sort((x, y) => x - y)[a.length >> 1];
+const midW = mid(rounds.map(r => r.words)), midK = mid(rounds.map(r => r.keys));
+
+ok(`한 판 20문제에 ${enWords.length}낱말 중 ${midW}낱말을 만난다 — 절반은 넘어야 한다`,
+  midW >= enWords.length / 2);
+ok(`한 판 20문제에 서로 다른 문제 ${midK}개 — 12개는 넘어야 한다`, midK >= 12);
+ok('한 낱말만 파고드는 판이 없다', rounds.every(r => r.words >= 4));
 
 /* ── 아이 화면 ── */
 group('아이 화면 (app.js)');

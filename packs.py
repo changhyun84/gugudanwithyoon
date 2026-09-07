@@ -181,6 +181,40 @@ POS_KO = {'v': '움직임을 나타내는 말', 'n': '이름을 나타내는 말
           'adj': '꾸며 주는 말', 'adv': '어떻게를 나타내는 말'}
 
 
+# 단어장 문제를 내는 순서. **낱말 순서로 내면 안 된다** (구현-현황 36장).
+#
+#   엔진은 한 팩에서 앞의 몇 개만 열어둔다(engine.js NEW_AT_ONCE). 낱말 순서로 내면
+#   그 몇 개가 전부 **첫 두 낱말**의 것이 된다 — 12낱말짜리 챕터를 넣어도 아이는
+#   ache와 concentrate만 백 번 푼다. 실제로 그랬다.
+#
+#   그렇다고 갈래 순서로 내면(문장 넣기 12개를 먼저, 그다음 뜻 알기 12개…) 이번에는
+#   열린 것이 전부 같은 갈래가 된다. 낱말은 열둘인데 하는 일이 하나다.
+#
+#   그래서 **표를 대각선으로 훑습니다.**
+#
+#            문장 넣기  뜻 알기  비슷한 말
+#     ache      1        2         3          ← 1회차: 낱말마다 다른 갈래를
+#     concen    3        1         2          ← 2회차: 한 칸씩 밀어서
+#     discov    2        3         1          ← 3회차: 나머지
+#
+#   1회차만 봐도 낱말 셋이 각각 다른 갈래로 나옵니다. 세 회차를 다 돌면
+#   모든 칸이 정확히 한 번씩 나옵니다.
+BASIC_GROUPS = ['문장 넣기', '뜻 알기', '비슷한 말']
+DEEP_GROUPS = ['뜻 고르기', '반대말', '철자 고르기']
+
+
+def diagonal(by_word, groups):
+    """(낱말 × 갈래) 표를 대각선으로 훑는다. 빈 칸(유의어가 없는 낱말 등)은 건너뛴다."""
+    out = []
+    n = len(groups)
+    for turn in range(n):
+        for i, row in enumerate(by_word):
+            r = row.get(groups[(i + turn) % n])
+            if r:
+                out.append(r)
+    return out
+
+
 def word_rows(words, warnings):
     """단어 하나에서 문제 다섯 갈래를 만든다. 반환 모양은 parse_csv와 같다.
 
@@ -203,8 +237,13 @@ def word_rows(words, warnings):
     for w in words:
         pool += w['syn'] + w['ant']
 
-    rows = []
+    # 낱말마다 갈래별 한 칸씩 채워두었다가 마지막에 대각선으로 펼친다 (위 diagonal)
+    by_word = []
+    def add(row):
+        by_word[-1][row['group']] = row
+
     for w in words:
+        by_word.append({})
         word, mean, ex = w['word'], w['mean'], w['example']
         pos = POS_KO.get(w['pos'].strip('.').lower(), '')
         first = f'첫 글자는 {word[0]}'
@@ -214,14 +253,14 @@ def word_rows(words, warnings):
         if ex and not blanked:
             warnings.append(f'{word} — 예문에서 이 낱말을 찾지 못해 빈칸 문제를 못 만들었습니다.')
         if blanked:
-            rows.append({
+            add({
                 'question': blanked, 'answer': word, 'wrongs': [],
                 'hint': f'{first}' + (f'. {pos}이야' if pos else ''),
                 'group': '문장 넣기', 'deep': False,
             })
 
         # ② 뜻 → 단어
-        rows.append({
+        add({
             'question': f'"{mean}" — 어떤 낱말일까?', 'answer': word, 'wrongs': [],
             'hint': w['hint'] or first, 'group': '뜻 알기', 'deep': False,
         })
@@ -230,7 +269,7 @@ def word_rows(words, warnings):
         if w['syn']:
             wrongs = pick_related(pool, need=3, avoid=[word, *w['syn']], prefer=w['ant'])
             if len(wrongs) == 3:
-                rows.append({
+                add({
                     'question': f'{word} — 뜻이 가장 가까운 낱말은?', 'answer': w['syn'][0],
                     'wrongs': wrongs, 'hint': f'첫 글자는 {w["syn"][0][0]}',
                     'group': '비슷한 말', 'deep': False,
@@ -238,7 +277,7 @@ def word_rows(words, warnings):
 
         # ④ 단어 → 뜻 (뜻이 짧을 때만. 버튼 넷에 긴 글이 들어가면 아이가 안 읽는다)
         if len(mean) <= MAX_MEAN_LEN and len([m for m in short_means if m != mean]) >= 3:
-            rows.append({
+            add({
                 'question': f'{word} — 무슨 뜻일까?', 'answer': mean, 'wrongs': [],
                 'hint': f'문장을 떠올려봐 — {blanked}' if blanked else first,
                 'group': '뜻 고르기', 'deep': True,
@@ -248,7 +287,7 @@ def word_rows(words, warnings):
         if w['ant']:
             wrongs = pick_related(pool, need=3, avoid=[word, *w['ant']], prefer=w['syn'])
             if len(wrongs) == 3:
-                rows.append({
+                add({
                     'question': f'{word} — 반대말은?', 'answer': w['ant'][0],
                     'wrongs': wrongs, 'hint': f'첫 글자는 {w["ant"][0][0]}',
                     'group': '반대말', 'deep': True,
@@ -256,12 +295,14 @@ def word_rows(words, warnings):
 
         # ⑥ 철자
         if len(word.replace(' ', '')) >= MIN_SPELL_LEN:
-            rows.append({
+            add({
                 'question': f'"{mean}" — 철자가 맞는 것은?', 'answer': word,
                 'wrongs': misspell(word, 3, all_words),
                 'hint': f'글자 수는 {len(word.replace(" ", ""))}개야',
                 'group': '철자 고르기', 'deep': True,
             })
+
+    rows = diagonal(by_word, BASIC_GROUPS) + diagonal(by_word, DEEP_GROUPS)
     return rows, warnings
 
 

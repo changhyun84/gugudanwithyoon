@@ -204,18 +204,26 @@ export function seedFacts(index, facts) {
   }
 }
 
-/* 한 번에 새로 배우는 것은 팩마다 5개.
+/* 한 번에 새로 배우는 것은 팩마다 8개.
    다만 출제 후보가 이만큼도 안 되면 같은 문제가 반복되므로 다음 문제를 미리 연다.
 
-   3이었는데 5로 올렸습니다 (2026-08-24). 실제 프로필로 300문제를 뽑아보니
-   **서로 다른 문제가 30개뿐**이고 상위 8개가 57%를 차지했습니다 — 부모가 먼저 알아챘습니다.
-   숫자는 sim/repeat.mjs 로 재봅니다. 올릴 때는 "한 번에 배우는 게 너무 많지 않은가"를
-   같이 보세요. 반복을 줄이는 가장 큰 손잡이는 이 값이 아니라 **부모가 단원을 여는 것**입니다. */
-const NEW_AT_ONCE = 5;
-const MIN_POOL = 12;
+   3 → 5 (2026-08-24) → 8 (2026-09-02). 두 번 다 부모가 먼저 알아챘습니다.
+   숫자는 sim/repeat.mjs 로 잽니다.
 
-/* 섞어 모드에서 기본과 **같이** 여는 심화 수. 기본 5에 심화 2면 대략 셋 중 하나가 심화다. */
-const DEEP_AT_ONCE = 2;
+   5 → 8로 올리면서 60일 시뮬을 같이 봤습니다. **마스터가 느려지지 않습니다** —
+   한 번에 여는 게 많아지면 하나하나가 늦어질 것 같지만, 최근 것을 건너뛰는 규칙 때문에
+   좁은 풀에서는 오히려 낭비되는 반복이 생깁니다. 60일 마스터 64 → 74였습니다.
+
+   올릴 때는 "한 번에 배우는 게 너무 많지 않은가"를 같이 보세요. 그래도 반복을 줄이는
+   가장 큰 손잡이는 이 값이 아니라 **부모가 단원을 몇 개 켰는가**입니다. */
+const NEW_AT_ONCE = 8;
+const MIN_POOL = 16;
+
+/* 최근 목록을 빼고도 후보가 이만큼은 남아야 한다. 남지 않으면 빼는 개수를 줄인다. */
+const MIN_CHOICES = 4;
+
+/* 섞어 모드에서 기본과 **같이** 여는 심화 수. 기본 8에 심화 3이면 대략 셋 중 하나가 심화다. */
+const DEEP_AT_ONCE = 3;
 
 /* 자유 모드에서 무엇을 낼지 — 팩 하나이거나 과목 전체다.
    문자열을 넘기면 팩 하나로 본다(예전 호출부와 호환). */
@@ -329,8 +337,15 @@ export function pickKey(index, facts, recent, today, want = null) {
     return { pool, total };
   };
 
-  // 최근에 나온 것은 빼되, 그러면 낼 게 없어지는 경우에는 직전 문제만 뺀다
-  let { pool, total } = build(recent);
+  /* 최근에 나온 것은 뺀다. 다 빼면 낼 게 없어지는 좁은 풀에서는 **반씩 줄여가며** 물러선다.
+     예전에는 여기서 곧장 «직전 하나만»으로 떨어졌습니다 — 19개를 빼려다 실패하면
+     1개만 빼는 셈이라, 가장 좁은 풀(심화만 켠 경우)에서 반복이 제일 심해졌습니다. */
+  let skip = recent;
+  let { pool, total } = build(skip);
+  while (pool.length < MIN_CHOICES && skip.length > 1) {
+    skip = skip.slice(-Math.floor(skip.length / 2));
+    ({ pool, total } = build(skip));
+  }
   if (!pool.length) ({ pool, total } = build(recent.slice(-1)));
   if (!pool.length) return recent[recent.length - 1] || Object.keys(index)[0];
 
