@@ -177,6 +177,7 @@ export function buildIndex(packs = [], disabled = null, progress = null) {
                        order: q.order + (q.deep ? DEEP_OFFSET : 0), deep: !!q.deep,
                        group: q.group || '',
                        prompt: q.prompt, answer: q.answer, choices: q.choices, hint: q.hint,
+                       type: q.type || 'choice', answers: q.answers || null,
                        gated: true, rewardable: true, start: 0 };
     });
   });
@@ -426,12 +427,44 @@ export function questionOf(index, key) {
     let [a, b] = e.mul;
     if (Math.random() < .5) [a, b] = [b, a];
     return { key, prompt: `${a} × ${b}`, answer: String(a * b), choices: makeChoices(a, b),
-             hint: bridge(a, b), equation: true, state: 'ask', hinted: false, picked: null };
+             hint: bridge(a, b), equation: true, type: 'choice', answers: null,
+             state: 'ask', hinted: false, shown: false, picked: null };
   }
   // 보기는 낼 때마다 섞는다. 파일에서 온 순서를 그대로 쓰면 아이가 자리를 외운다 —
   // 정적 배포에서는 파일이 한 번 구워지므로 안 섞으면 영영 같은 자리다.
-  return { key, prompt: e.prompt, answer: e.answer, choices: shuffle(e.choices), hint: e.hint,
-           equation: !e.prompt.trim().endsWith('?'), state: 'ask', hinted: false, picked: null };
+  return { key, prompt: e.prompt, answer: e.answer, choices: shuffle(e.choices || []), hint: e.hint,
+           equation: !e.prompt.trim().endsWith('?'), type: e.type || 'choice', answers: e.answers || null,
+           state: 'ask', hinted: false, shown: false, picked: null };
+}
+
+/* ============ 단답형 채점 (기획서 12.1 · 기술설계서 5.6) ============
+
+   **관대한 쪽으로 기웁니다.** 오타 때문에 틀린 것으로 처리되면 아이는 «아는데 틀렸다»를
+   배웁니다. 그건 이 게임에서 가장 나쁜 결과입니다 (원칙 2.1). 관대해서 생기는 손해는
+   마스터가 조금 빨라지는 것뿐입니다.
+
+   한글 조사는 **자동으로 안 자릅니다.** "뿌리를"과 "뿌리"를 규칙으로 가르려다
+   "빨래"를 "빨"+조사로 자르는 편이 더 나쁩니다. 복수 정답(`/`)으로 적게 합니다. */
+
+export const norm = s => String(s ?? '').trim().toLowerCase()
+  .replace(/\s+/g, ' ')              // 사이의 여분 공백
+  .replace(/^(a|an|the)\s+/, '')     // 영어 관사
+  .replace(/[.,!?~]+$/, '');         // 끝 문장부호
+
+/* 띄어쓰기까지 지운 꼴. "4시5분"과 "4시 5분"을 같게 본다. */
+const tight = s => norm(s).replace(/\s+/g, '');
+
+export const answersOf = q => (q.answers && q.answers.length ? q.answers : [q.answer]);
+
+export function isRight(given, answers) {
+  const g = norm(given);
+  if (!g) return false;              // 빈칸은 「모르겠어」다 — 정답이 아니다
+  return answers.some(a => norm(a) === g || tight(a) === tight(given));
+}
+
+/* 화면이 쓰는 단 하나의 채점 입구. 보기를 눌렀든 직접 썼든 여기로 들어온다. */
+export function judge(q, given) {
+  return q.type === 'short' ? isRight(given, answersOf(q)) : given === q.answer;
 }
 
 /* ============ 최근 기록 ============

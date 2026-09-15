@@ -20,21 +20,33 @@ let pass = 0, fail = 0;
 const group = t => console.log(`\n${t}`);
 const ok = (t, c) => { c ? (pass++, console.log('  ✓ ' + t)) : (fail++, console.log('  ✗ ' + t)); };
 
-/* ── 버튼만 아는 아주 작은 DOM ──
-   innerHTML을 넣을 때마다 <button>을 훑어 눌러볼 수 있는 것으로 만든다. */
+/* ── 버튼과 입력칸만 아는 아주 작은 DOM ──
+   innerHTML을 넣을 때마다 <button>·<input>을 훑어 눌러보고 써볼 수 있는 것으로 만든다. */
 function makeEl(id) {
   let html = '';
   let buttons = [];
+  const attrsOf = (el, attrs) => {
+    for (const a of attrs.matchAll(/data-([a-z]+)="([^"]*)"/g)) el.dataset[a[1]] = a[2];
+    const i = /\bid="([^"]*)"/.exec(attrs); if (i) el.id = i[1];
+    el._attrs = attrs;
+    return el;
+  };
   const parse = v => {
     buttons = [...v.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)].map(m => {
       const attrs = m[1], text = m[2].replace(/<[^>]*>/g, '').trim();
-      const el = { textContent: text, dataset: {}, id: '', disabled: /\bdisabled\b/.test(attrs),
-                   onclick: null, addEventListener() {}, focus() {}, classList: { add() {}, remove() {} } };
-      for (const a of attrs.matchAll(/data-([a-z]+)="([^"]*)"/g)) el.dataset[a[1]] = a[2];
-      const i = /\bid="([^"]*)"/.exec(attrs); if (i) el.id = i[1];
-      el._attrs = attrs;
-      return el;
+      return attrsOf({ textContent: text, dataset: {}, id: '', disabled: /\bdisabled\b/.test(attrs),
+                       onclick: null, addEventListener() {}, focus() {},
+                       classList: { add() {}, remove() {} } }, attrs);
     });
+    // 입력칸도 같은 목록에 넣는다 — 화면은 둘을 나란히 내놓고, 검사도 나란히 눌러본다
+    buttons.push(...[...v.matchAll(/<input\b([^>]*?)>/g)].map(m => {
+      const attrs = m[1];
+      const val = /\bvalue="([^"]*)"/.exec(attrs);
+      return attrsOf({ tag: 'input', textContent: '', value: val ? val[1] : '', dataset: {}, id: '',
+                       disabled: /\bdisabled\b/.test(attrs), onclick: null, onkeydown: null,
+                       addEventListener() {}, focus() {},
+                       classList: { add() {}, remove() {} } }, attrs);
+    }));
   };
   const match = (el, sel) => {
     if (sel.startsWith('#')) return el.id === sel.slice(1);
@@ -202,6 +214,75 @@ ok('단원이 하나여도 «무엇을 풀까»로 간다', has(solo.app, '[data
 ok('과목 고르는 단계는 건너뛴다 — 고를 게 하나인 화면은 헛걸음이다',
   !has(solo.app, '[data-into]'));
 ok('그냥 풀기도 그대로 된다', has(solo.app, '[data-pack]'));
+
+group('직접 써서 답하기 (6A 단답형)');
+
+/* 수학 심화만 켜면 화면에 나오는 것이 **전부 단답**입니다. 그 상태로 끝까지 눌러봅니다.
+   여기서 보는 것은 채점이 아니라 **막힌 아이가 누를 것이 화면에 있는가**입니다 (기획서 12.1). */
+const CIRCLE = CONTENT.packs.find(p => p.id === '2-3-원');
+const ansOf = {};
+for (const q of CIRCLE.problems) ansOf[q.prompt] = String(q.answer);
+
+const promptNow = a => unesc(/class="question[^"]*">([\s\S]*?)<\/div>/.exec(a.innerHTML)[1].trim());
+
+const mathSeed = structuredClone(seed);
+mathSeed.id = 'short'; mathSeed.progress = { units: ['2-3-원'], level: '심화' };
+const W = await boot(mathSeed);
+click(W.app, '#play');
+click(W.app, '[data-pack]');
+
+ok('문제가 나온다', /class="question/.test(W.app.innerHTML));
+ok('보기 버튼이 없다 — 골라서 맞히는 문제가 아니다', !has(W.app, '[data-pick]'));
+ok('입력칸이 있다', !!W.app.querySelector('#typed'));
+ok('빨간 밑줄이 안 그어진다 — spellcheck=false (원칙 2.1)',
+  /spellcheck="false"/.test(W.app.innerHTML));
+ok('자동 고침·자동 대문자·자동 완성이 다 꺼져 있다',
+  ['autocorrect="off"', 'autocapitalize="off"', 'autocomplete="off"']
+    .every(s => W.app.innerHTML.includes(s)));
+ok('답이 숫자뿐이면 숫자판이 뜬다', /inputmode="numeric"/.test(W.app.innerHTML));
+ok('「보기 보여줘」가 같은 화면에 있다 — 막히면 누를 것이 있어야 한다', has(W.app, '#show'));
+ok('「모르겠어」도 같은 화면에 있다', has(W.app, '#dunno'));
+ok('힌트는 그대로 있다', has(W.app, '#hint'));
+
+/* 프로필 저장은 다섯 문제마다 한 번이다(saveSoon). 그래서 보상은 **화면에 보이는 값**으로 본다 —
+   아이가 실제로 읽는 줄이기도 하다. */
+const type = (t, text) => { t.app.querySelector('#typed').value = text; click(t.app, '#ok'); };
+const settle = () => new Promise(r => setTimeout(r, 1300));   // 맞히면 잠시 뒤 저절로 넘어간다
+
+/* ① 직접 써서 맞히기 */
+type(W, ansOf[promptNow(W.app)]);
+ok('직접 써서 맞히면 «맞았어»가 나온다', /맞았어/.test(W.app.innerHTML));
+ok('보너스까지 그대로 받는다 — 쓰는 것에 손해가 없다 (기획서 12.1)',
+  /풀 \+6 받았어/.test(W.app.innerHTML));
+
+/* ② 「보기 보여줘」 — 언제든 4지선다로 내려올 수 있다 */
+await settle();
+ok('맞히면 다음 문제로 넘어간다', !!W.app.querySelector('#typed'));
+const shownPrompt = promptNow(W.app);
+click(W.app, '#show');
+ok('「보기 보여줘」를 누르면 보기 넷이 나온다', W.app.querySelectorAll('[data-pick]').length === 4);
+ok('그때는 입력칸이 사라진다', !W.app.querySelector('#typed'));
+W.app.querySelectorAll('[data-pick]').find(b => unesc(b.textContent) === ansOf[shownPrompt]).onclick();
+ok('보기로 맞혀도 풀은 받는다 — 다만 힌트와 같은 취급이라 보너스는 아니다 (+4)',
+  /풀 \+4 받았어/.test(W.app.innerHTML));
+ok('화면에 «포기»라는 말은 없다', !/포기/.test(W.app.innerHTML));
+
+/* ③ 「모르겠어」 — 빈칸으로도 넘어갈 수 있고, 푼 것으로 센다 */
+await settle();
+click(W.app, '#dunno');
+ok('빈칸으로 넘어가도 기본 보상은 나간다 (원칙 2.2)', /풀 \+3 받았어/.test(W.app.innerHTML));
+ok('그러면서 정답을 알려준다', /class="feedback tell/.test(W.app.innerHTML));
+ok('«알겠어»로 다음으로 간다', has(W.app, '#next'));
+
+/* ④ 저장된 것으로 마스터리를 본다. 다섯 문제를 채워야 저장된다. */
+click(W.app, '#next');
+for (let i = 0; i < 2; i++) { click(W.app, '#dunno'); click(W.app, '#next'); }
+const done = JSON.parse(W.bag['gugudan-profile-short']);
+ok('푼 것으로 다 센다 — 「모르겠어」도 포함해 5문제', done.daily.solved === 5);
+ok('직접 써서 맞힌 것은 마스터리가 올라간다',
+  Object.values(done.facts).filter(f => f.m === 1).length === 2);
+ok('틀린 것은 «어려워하는 문제»에 남는다 — 부모가 본다',
+  Object.values(done.facts).some(f => (f.log || []).some(x => x.endsWith(':x'))));
 
 group('다시는 이렇게 터지지 않게');
 

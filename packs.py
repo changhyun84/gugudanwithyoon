@@ -15,10 +15,19 @@ HEADERS = {
     'hint':     ['힌트', 'hint'],
     'group':    ['묶음', 'group'],
     'level':    ['난이도', 'level'],
+    'type':     ['유형', 'type'],
 }
 
 # 난이도 칸에 이 말이 들어 있으면 심화. 비어 있으면 기본이다.
 DEEP_WORDS = ('심화', '어려움', 'deep', 'hard')
+
+# 유형 칸 — 답하는 방식 (기술설계서 5.6). 비어 있으면 선택형이다.
+TYPES = {'': 'choice', '선택': 'choice', '객관식': 'choice', 'choice': 'choice',
+         '단답': 'short', '주관식': 'short', 'short': 'short'}
+
+# 서술형(6C)은 아직입니다. 이름은 알아듣되 선택형으로 내려놓고 부모에게 알립니다 —
+# 모르는 값이라고 문제를 버리면 오타 하나로 문제가 사라집니다 (기술설계서 5.6).
+LATER_TYPES = ('서술', 'open', '논술')
 
 
 UNIT_RE = re.compile(r'^\d+(?:[-.]\d+)*')
@@ -514,12 +523,27 @@ def parse_csv(text, stem):
             'wrongs': [w for w in (get(row, 'wrong1'), get(row, 'wrong2'), get(row, 'wrong3')) if w],
             'hint': get(row, 'hint'), 'group': get(row, 'group'),
             'deep': get(row, 'level').lower() in DEEP_WORDS,
+            'type': read_type(get(row, 'type'), f'{n}번째 줄', warnings),
         })
     return stem, rows, warnings
 
 
+def read_type(value, where, warnings):
+    """유형 칸을 읽는다. 모르는 값이면 선택형으로 떨어뜨리고 경고에 남긴다 —
+       오타 하나로 문제가 통째로 사라지면 안 된다."""
+    key = value.strip().lower()
+    if key in TYPES:
+        return TYPES[key]
+    if key in LATER_TYPES:
+        warnings.append(f'{where} — 서술형은 아직 만들지 않았습니다. 선택형으로 냅니다.')
+        return 'choice'
+    warnings.append(f'{where} — 유형 "{value}"를 몰라서 선택형으로 냈습니다. '
+                    f'쓸 수 있는 값: 선택 · 단답')
+    return 'choice'
+
+
 def parse_md(text, stem):
-    name, group, deep = stem, '', False
+    name, group, deep, kind = stem, '', False, 'choice'
     rows, warnings = [], []
 
     for n, line in enumerate(text.splitlines(), start=1):
@@ -530,6 +554,9 @@ def parse_md(text, stem):
             group = line.split(':', 1)[1].strip()
         elif line.startswith('난이도:'):
             deep = line.split(':', 1)[1].strip().lower() in DEEP_WORDS
+        elif line.startswith('유형:'):
+            # md는 파일 전체에 한 줄로 건다 — 묶음·난이도와 같은 자리다 (기술설계서 5.6)
+            kind = read_type(line.split(':', 1)[1], f'{n}번째 줄', warnings)
         elif line.startswith('-'):
             body, _, hint = line[1:].partition('//')
             parts = re.split(r'->|→', body, maxsplit=1)
@@ -541,7 +568,7 @@ def parse_md(text, stem):
                 warnings.append(f'{n}번째 줄 — 문제가 비어 있어 건너뛰었습니다.')
                 continue
             rows.append({'question': question, 'answer': answer, 'wrongs': [],
-                         'hint': hint.strip(), 'group': group, 'deep': deep})
+                         'hint': hint.strip(), 'group': group, 'deep': deep, 'type': kind})
     return name, rows, warnings
 
 
@@ -559,31 +586,57 @@ def build_problems(rows, pack_id):
     all_answers = [r['answer'] for r in rows]
 
     for order, r in enumerate(rows):
+        kind = r.get('type') or 'choice'
+        # 복수 정답은 `/`로 나눠 적는다. 화면에 보여주고 보기로 쓰는 것은 **첫 번째**다.
+        answers = split_answers(r['answer'])
+        shown = answers[0]
+
         # 겹치는 보기를 그냥 두면 화면에 같은 것이 둘 나오고 보기가 사실상 셋이 된다.
         # 부모가 오답 칸에 직접 쓴 것도, 같은 묶음에서 끌어온 것도 겹칠 수 있다.
-        choices = dedupe(r['wrongs'], skip={r['answer']})[:3]
+        choices = dedupe(r['wrongs'], skip={shown})[:3]
         for _ in range(3):   # 채우다 또 겹칠 수 있으므로 몇 번 더 시도한다
             if len(choices) >= 3:
                 break
             choices = dedupe(choices + auto_wrongs(
-                r['answer'], 3 - len(choices), choices, r['question'],
-                answers_by_group.get(r['group'], []), all_answers), skip={r['answer']})
+                shown, 3 - len(choices), choices, r['question'],
+                answers_by_group.get(r['group'], []), all_answers), skip={shown})
         if len(choices) < 3:
-            warnings.append(f'"{r["question"]}" — 보기를 4개로 만들 수 없어 뺐습니다. '
-                            f'오답 칸을 채우거나 같은 묶음에 문제를 더 넣어주세요.')
-            continue
+            # 단답형은 보기가 없어도 낼 수 있다. 「보기 보여줘」 버튼만 안 보인다.
+            if kind != 'short':
+                warnings.append(f'"{r["question"]}" — 보기를 4개로 만들 수 없어 뺐습니다. '
+                                f'오답 칸을 채우거나 같은 묶음에 문제를 더 넣어주세요.')
+                continue
+            choices = []
 
-        problems.append({
+        q = {
             'key': f'{pack_id}:{normalize(r["question"])}',
             'order': order,
             'deep': bool(r.get('deep')),
             'prompt': r['question'],
-            'answer': r['answer'],
-            'choices': shuffled([r['answer']] + choices[:3]),
+            'answer': shown,
+            'choices': shuffled([shown] + choices[:3]) if choices else [],
             'hint': r['hint'] or auto_hint(r['question'], r['answer']),
             'group': r['group'],
-        })
+        }
+        # 기본값은 싣지 않는다 — 700문제에 'choice'를 붙이면 정적 배포 파일만 커진다
+        if kind != 'choice':
+            q['type'] = kind
+        if len(answers) > 1:
+            q['answers'] = answers
+        problems.append(q)
     return problems, warnings
+
+
+# 분수는 1/2처럼 `/`를 쓴다. 복수 정답과 생김새가 같아서 나누면 "1 또는 2"가 된다.
+FRACTION_RE = re.compile(r'-?\d+\s*/\s*\d+')
+
+
+def split_answers(answer):
+    """`빛/빛깔` → ['빛', '빛깔']. 분수 하나는 나누지 않는다."""
+    if FRACTION_RE.fullmatch(answer.strip()):
+        return [answer.strip()]
+    parts = [a.strip() for a in answer.split('/') if a.strip()]
+    return parts or [answer.strip()]
 
 
 def dedupe(items, skip=()):

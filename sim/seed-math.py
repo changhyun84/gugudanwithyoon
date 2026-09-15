@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 OUT = Path(__file__).resolve().parent.parent / 'content' / 'problems' / '수학'
-HEAD = ['문제', '정답', '오답1', '오답2', '오답3', '힌트', '묶음', '난이도']
+HEAD = ['문제', '정답', '오답1', '오답2', '오답3', '힌트', '묶음', '난이도', '유형']
 
 
 def dedupe(rows):
@@ -32,7 +32,7 @@ EASYISH = [(3,3),(4,5),(5,6),(5,7),(5,8),(6,9),(7,9),(8,9),(3,9),(4,9)]
 
 
 def q(prompt, answer, hint='', group='', wrongs=('', '', '')):
-    return [prompt, str(answer), *wrongs, hint, group, '']
+    return [prompt, str(answer), *wrongs, hint, group, '', '']
 
 
 def d(prompt, answer, hint='', group='', wrongs=('', '', '')):
@@ -40,8 +40,12 @@ def d(prompt, answer, hint='', group='', wrongs=('', '', '')):
 
        계산을 어렵게 만드는 것이 아니라 **묻는 방식을 바꾼다.** 같은 12 ÷ 3을
        문장으로 묻고, 거꾸로 묻고, 두 단계로 묻는다. 아이가 "또 이 문제"라고
-       느끼는 것은 수가 같아서가 아니라 **묻는 방식이 같아서**다."""
-    return [prompt, str(answer), *wrongs, hint, group, '심화']
+       느끼는 것은 수가 같아서가 아니라 **묻는 방식이 같아서**다.
+
+       수학 심화는 **단답**이다. 보기가 넷인 한 재보고 고르는 길이 계속 생긴다 —
+       41장이 그 길을 하나 막았지만 막을수록 다음 길이 난다. 답이 네 자 이하 수라
+       그대로 쓰게 할 수 있다. 막히면 「보기 보여줘」로 언제든 4지선다로 내려온다."""
+    return [prompt, str(answer), *wrongs, hint, group, '심화', '단답']
 
 
 # ── 1학기 ─────────────────────────────────────────────
@@ -411,5 +415,5 @@ if __name__ == '__main__':
             w = csv.writer(f)
             w.writerow(HEAD)
             w.writerows(rows)
-        deep_n = sum(1 for r in rows if r[-1] == '심화')
+        deep_n = sum(1 for r in rows if r[-2] == '심화')
         print(f'  {path.name:28} {len(rows):3}문제 (기본 {len(rows)-deep_n} · 심화 {deep_n})')

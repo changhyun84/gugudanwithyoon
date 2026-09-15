@@ -135,6 +135,17 @@ input:focus,button:focus-visible{outline:3px solid var(--sky);outline-offset:2px
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 @media (max-width:360px){.choice{font-size:26px;padding:18px 4px}}
 
+/* --- 직접 써서 답하기 (단답형) ---
+   보기 버튼과 같은 크기·같은 글꼴이다. 답하는 자리가 갑자기 작아지면 아이가 머뭇거린다. */
+.typed{margin-top:20px;font-family:'Jua',sans-serif!important;font-size:34px!important;
+  text-align:center;padding:20px 12px!important;border-radius:20px!important;
+  border:2px solid var(--line)!important;box-shadow:0 3px 0 rgba(0,0,0,.07)}
+.typed::placeholder{font-size:22px;color:var(--ink-soft);opacity:.65}
+.typed.ok{background:#E4F3DC!important;border-color:var(--grass)!important;color:var(--grass-deep)!important}
+.typed.bad{background:#FBF3E0!important;border-color:#EBDCB6!important;color:#6B5320!important}
+.typed[disabled]{opacity:1}
+@media (max-width:360px){.typed{font-size:28px!important}}
+
 /* --- 글자 문제 (부모 팩) --- */
 .question.long{font-size:clamp(24px,6.5vw,32px);line-height:1.4;margin:10px 0 4px}
 .choice.word{font-size:clamp(19px,5vw,24px);padding:20px 10px;word-break:keep-all}

@@ -1,7 +1,7 @@
 import { ALL_ITEMS, CHARACTERS, GRASS_ICON, ITEMS, STAR_ICON, charById, charSVG, itemById, slotOf, tierOf } from './characters.js';
 import { BACKGROUNDS, bgById, decoSVG, lookOf } from './backgrounds.js';
 import * as store from './store.js';
-import { TARGETS, factKey, buildIndex, packList, pruneLogs, seedFacts, makeQuestion, questionOf, applyResult } from './engine.js';
+import { TARGETS, factKey, buildIndex, packList, pruneLogs, seedFacts, makeQuestion, questionOf, applyResult, judge, answersOf } from './engine.js';
 
 const BASE_REWARD = 3;    // 풀어보기만 해도
 const BONUS_REWARD = 3;   // 맞추면 조금 더
@@ -476,6 +476,39 @@ function nextQ() {
   askedAt = Date.now();
 }
 
+/* 직접 써서 답하는 중인가. 「보기 보여줘」를 누르면 그 문제는 4지선다로 내려온다 (기획서 12.1) */
+const writing = q => q.type === 'short' && !q.shown;
+
+/* 숫자만 답인 문제는 숫자판을 띄운다 — 아이패드에서 자판을 바꾸는 손이 하나 준다.
+   `1/2`·`4시 5분`처럼 글자가 섞이면 보통 자판이어야 한다. */
+function padOf(q) {
+  const all = answersOf(q);
+  if (all.every(a => /^\d+$/.test(a))) return ' inputmode="numeric"';
+  if (all.every(a => /^[\d.]+$/.test(a))) return ' inputmode="decimal"';
+  return '';
+}
+
+/* 입력칸과 그 아래 버튼들.
+
+   **막힌 아이가 누를 것이 늘 화면에 있어야 합니다** (기획서 12.1). 빈칸 앞에서 멈춘 아이는
+   곧 "안 할래"가 되고, 그게 이 게임이 없애려던 상태입니다. 그래서 「보기 보여줘」와
+   「모르겠어」는 **입력칸과 같은 화면에** 둡니다 — 한 번 더 눌러 찾게 하지 않습니다.
+
+   `spellcheck=false`가 빠지면 아이가 쓰는 도중에 빨간 밑줄이 그어집니다. 원칙 2.1 직격입니다.
+   자동 완성도 끕니다 — 답을 대신 채워주면 문제가 사라집니다. */
+function writeBox(q) {
+  const asking = q.state === 'ask';
+  const cls = 'typed' + (asking ? '' : q.state === 'right' ? ' ok' : ' bad');
+  const box = `<input type="text" id="typed" class="${cls}" maxlength="24" value="${esc(q.picked || '')}"` +
+    ` placeholder="답을 써봐" autocomplete="off" autocorrect="off" autocapitalize="off"` +
+    ` spellcheck="false" enterkeyhint="done"${padOf(q)}${asking ? '' : ' disabled'}>`;
+  if (!asking) return box;
+  return box + '<button class="btn go mt" id="ok">확인</button>' +
+    '<div class="btnrow">' +
+    (q.choices.length === 4 ? '<button class="btn soft wide" id="show">보기 보여줘</button>' : '') +
+    '<button class="btn soft wide" id="dunno">모르겠어</button></div>';
+}
+
 function renderQuiz() {
   const q = quiz;
   const long = q.prompt.length > 12;
@@ -483,14 +516,20 @@ function renderQuiz() {
     (sweep
       ? `<div class="qhead"><span>${esc(sweep.name)} 한 바퀴 ${sweep.i} / ${sweep.keys.length}</span><span>다 한 번씩 나와</span></div>`
       : `<div class="qhead"><span>오늘 ${P.daily.solved} / ${goal()}</span><span>천천히 해도 괜찮아</span></div>`) +
-    `<div class="question ${long ? 'long' : ''}">${esc(q.prompt)}</div><div class="choices">`;
+    `<div class="question ${long ? 'long' : ''}">${esc(q.prompt)}</div>`;
 
-  q.choices.forEach(c => {
-    let cls = 'choice' + (c.length > 3 ? ' word' : '');
-    if (q.state !== 'ask') cls += (c === q.answer && q.picked === q.answer) ? ' ok' : c === q.answer ? ' show' : ' dim';
-    body += `<button class="${cls}" ${q.state === 'ask' ? `data-pick="${esc(c)}"` : 'disabled'}>${esc(c)}</button>`;
-  });
-  body += '</div>';
+  /* 답하는 부분만 갈아 끼운다. 위아래(문제·힌트·말풍선·보상)는 유형이 달라도 같다. */
+  if (writing(q)) {
+    body += writeBox(q);
+  } else {
+    body += '<div class="choices">';
+    q.choices.forEach(c => {
+      let cls = 'choice' + (c.length > 3 ? ' word' : '');
+      if (q.state !== 'ask') cls += (c === q.answer && q.picked === q.answer) ? ' ok' : c === q.answer ? ' show' : ' dim';
+      body += `<button class="${cls}" ${q.state === 'ask' ? `data-pick="${esc(c)}"` : 'disabled'}>${esc(c)}</button>`;
+    });
+    body += '</div>';
+  }
 
   if (q.state === 'ask') {
     if (q.hinted) body += `<div class="hintbox pop"><strong>이렇게 하면 쉬워</strong><br>${esc(q.hint)}</div>`;
@@ -512,15 +551,32 @@ function renderQuiz() {
   if (hint) hint.onclick = () => { quiz.hinted = true; renderQuiz(); bind(); };
   const next = app.querySelector('#next');
   if (next) next.onclick = advance;
+
+  const typed = app.querySelector('#typed');
+  if (typed && q.state === 'ask') {
+    /* 빈칸으로 「확인」을 누르면 아무 일도 안 일어난다 — 그건 막다른 길이다.
+       커서를 돌려주고, 넘어갈 길은 「모르겠어」가 바로 옆에 있다. */
+    const send = () => { const v = typed.value.trim(); v ? answer(v) : typed.focus(); };
+    typed.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); send(); } };
+    app.querySelector('#ok').onclick = send;
+    typed.focus();
+  }
+  const show = app.querySelector('#show');
+  if (show) show.onclick = () => { quiz.shown = true; renderQuiz(); bind(); };
+  const dunno = app.querySelector('#dunno');
+  if (dunno) dunno.onclick = () => answer('');   // 빈칸도 푼 것으로 센다 (기획서 12.1)
 }
 
 function answer(picked) {
   const q = quiz;
-  const right = picked === q.answer;
+  const right = judge(q, picked);
+  /* 「보기 보여줘」는 **힌트와 같은 취급**이다 (기획서 12.1 · 기술설계서 7.1).
+     여기 한 곳에서만 합치면 보상·말풍선·마스터리·한 바퀴가 전부 따라온다. */
+  const used = q.hinted || q.shown;
   q.picked = picked;
-  q.gain = BASE_REWARD + (right && !q.hinted ? BONUS_REWARD : right ? 1 : 0);
+  q.gain = BASE_REWARD + (right && !used ? BONUS_REWARD : right ? 1 : 0);
   q.state = right ? 'right' : 'wrong';
-  q.says = say(right ? (q.hinted ? '힌트정답' : '정답') : '오답', { answer: q.answer, prompt: q.prompt });
+  q.says = say(right ? (used ? '힌트정답' : '정답') : '오답', { answer: q.answer, prompt: q.prompt });
 
   P.wallet.grass += q.gain;
   P.daily.solved++;
@@ -529,9 +585,9 @@ function answer(picked) {
   P.totals.solved++;
   const goalStar = catchUpGoal();
 
-  if (sweep) { if (right && !q.hinted) sweep.right++; else sweep.wrong.push(q.key); }
+  if (sweep) { if (right && !used) sweep.right++; else sweep.wrong.push(q.key); }
 
-  const mastered = applyResult(INDEX[q.key], P.facts[q.key], right, q.hinted, today(), Date.now() - askedAt);
+  const mastered = applyResult(INDEX[q.key], P.facts[q.key], right, used, today(), Date.now() - askedAt);
   if (mastered) {
     P.wallet.star++;
     P.daily.star = (P.daily.star || 0) + 1;

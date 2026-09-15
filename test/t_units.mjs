@@ -517,6 +517,86 @@ ok(`구구단도 "일의 자리만 떠올리면 맞는" 보기가 없다 (${guTw
 ok(`옆 단 오답이 그대로 남아 있다 (${(guNeighbor * 100 / guTot).toFixed(0)}% — 80% 위)`,
    guNeighbor / guTot > 0.8);
 
+/* ── 유형 열 · 단답형 (6A, 2026-09-15) ── */
+group('유형 열 — 답하는 방식을 문제마다 고른다');
+
+const typed = JSON.parse(execFileSync('python3', ['-c', `
+import json, packs, pathlib, tempfile
+root = pathlib.Path(tempfile.mkdtemp()) / 'problems'
+root.mkdir(parents=True)
+(root / 'kinds.csv').write_text(
+    '문제,정답,오답1,오답2,오답3,힌트,묶음,난이도,유형\\n'
+    '가,1,,,,,ㄱ,,\\n'
+    '나,2,,,,,ㄱ,,단답\\n'
+    '다,3,,,,,ㄱ,,주관식\\n'
+    '라,4,,,,,ㄱ,,선택\\n'
+    '마,5,,,,,ㄱ,,서술\\n'
+    '바,6,,,,,ㄱ,,단다\\n', encoding='utf-8')
+(root / 'alone.md').write_text(
+    '# 혼자\\n묶음: ㄷ\\n유형: 단답\\n- 뭘까 -> 뿌리\\n', encoding='utf-8')
+(root / 'alonepick.md').write_text(
+    '# 혼자 선택\\n묶음: ㄷ\\n- 뭘까 -> 뿌리\\n', encoding='utf-8')
+(root / 'many.md').write_text(
+    '# 복수 정답\\n묶음: ㄴ\\n유형: 단답\\n'
+    '- 빛나는 것 -> 빛/빛깔\\n- 반이 얼마 -> 1/2\\n- 몇 시 -> 4시 5분\\n'
+    '- 하나 -> 하나\\n- 둘 -> 둘\\n', encoding='utf-8')
+out = {}
+for p in packs.scan(root):
+    out[p['id']] = {'warnings': p['warnings'],
+                    'problems': [{'prompt': q['prompt'], 'answer': q['answer'],
+                                  'answers': q.get('answers'), 'type': q.get('type', 'choice'),
+                                  'choices': q['choices']} for q in p['problems']]}
+print(json.dumps(out, ensure_ascii=False))`], { cwd: ROOT, encoding: 'utf8' }));
+
+const kinds = Object.fromEntries(typed.kinds.problems.map(q => [q.prompt, q]));
+ok('유형 칸이 비면 선택형', kinds['가'].type === 'choice');
+ok('«단답»은 단답형', kinds['나'].type === 'short');
+ok('«주관식»도 단답형', kinds['다'].type === 'short');
+ok('«선택»은 선택형', kinds['라'].type === 'choice');
+ok('단답형도 보기를 만들어 둔다 — 「보기 보여줘」가 그걸 쓴다', kinds['나'].choices.length === 4);
+/* 오타 하나로 문제가 사라지면 부모는 무엇이 없어졌는지도 모른다 */
+ok('서술형은 아직이라 선택형으로 내고 알려준다',
+  kinds['마'].type === 'choice' && typed.kinds.warnings.some(w => w.includes('서술형은 아직')));
+ok('모르는 유형도 문제를 버리지 않고 선택형으로 낸다',
+  kinds['바'].type === 'choice' && typed.kinds.warnings.some(w => w.includes('단다')));
+
+const many = Object.fromEntries(typed.many.problems.map(q => [q.prompt, q]));
+ok('md는 파일 전체에 유형을 한 줄로 건다', Object.values(many).every(q => q.type === 'short'));
+ok('복수 정답은 /로 나눈다', String(many['빛나는 것'].answers) === '빛,빛깔');
+ok('화면에 보여주는 것은 첫 번째다 — 보기에 «빛/빛깔»이 뜨면 안 된다',
+  many['빛나는 것'].answer === '빛' && many['빛나는 것'].choices.includes('빛'));
+/* 분수는 1/2처럼 /를 쓴다. 나누면 "1 또는 2"가 된다 */
+ok('분수는 안 나눈다', many['반이 얼마'].answer === '1/2' && !many['반이 얼마'].answers);
+
+/* 9.2 — 예전에는 보기를 못 만들면 문제를 통째로 버렸다. 단답형에는 그럴 이유가 없다 */
+ok('보기를 못 만들어도 단답형은 살아남는다',
+  typed.alone.problems.length === 1 && typed.alone.problems[0].choices.length === 0);
+/* 보기가 없는데 버튼이 있으면 눌렀을 때 빈 화면이 된다 — 막힌 아이에게 가장 나쁜 순간이다 */
+ok('그런 문제에는 「보기 보여줘」 버튼을 안 그린다',
+  /q\.choices\.length === 4 \?[^\n]*id="show"/.test(
+    read(new URL('../web/app.js', import.meta.url), 'utf8')));
+ok('선택형은 예전대로 빠지고 부모에게 알린다',
+  typed.alonepick.problems.length === 0 &&
+  typed.alonepick.warnings.some(w => w.includes('보기를 4개로 만들 수 없어')));
+
+group('단답 채점 — 애매하면 정답 쪽으로 기운다 (기획서 12.1)');
+
+const short = a => ({ type: 'short', answer: a, answers: null });
+ok('그대로 쓰면 정답', E.judge(short('36'), '36'));
+ok('앞뒤 공백은 봐준다', E.judge(short('36'), '  36 '));
+ok('사이 공백도 봐준다 — 4시5분과 4시 5분', E.judge(short('4시 5분'), '4시5분'));
+ok('영어 대소문자를 안 가린다', E.judge(short('apple'), 'Apple'));
+ok('영어 관사를 안 가린다', E.judge(short('book'), 'a book'));
+ok('끝 문장부호를 안 가린다', E.judge(short('뿌리'), '뿌리.'));
+ok('복수 정답은 둘 다 맞다',
+  E.isRight('빛깔', ['빛', '빛깔']) && E.isRight('빛', ['빛', '빛깔']));
+ok('틀린 답은 틀리다', !E.judge(short('36'), '35'));
+ok('빈칸은 정답이 아니다 — 「모르겠어」와 같다', !E.judge(short('36'), '   '));
+/* 한글 조사는 규칙으로 안 자른다. "빨래"를 "빨"+조사로 자르는 편이 더 나쁘다 */
+ok('조사는 자동으로 안 자른다 — 복수 정답으로 적게 한다', !E.judge(short('뿌리'), '뿌리를'));
+ok('선택형은 고른 것이 정답과 똑같아야 한다',
+  E.judge({ type: 'choice', answer: '36' }, '36') && !E.judge({ type: 'choice', answer: '36' }, ' 36'));
+
 
 const pack = (id, subject, unit, order) => ({
   id, subject, unit, order, name: id,
