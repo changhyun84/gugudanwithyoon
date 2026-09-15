@@ -614,14 +614,18 @@ def auto_wrongs(answer, need, taken, question, group_answers, all_answers):
        1002가 아니라 **자릿수**다 — 100이나 10000을 쓴다. 그래서 답의 끝자리 0 개수를 보고
        오답의 자리도 거기에 맞춘다.
 
+       같은 이유로 **일의 자리도 같아야 한다**(구현-현황 28.2). 12 × 3 의 보기가
+       35·36·37·38 이면 2 × 3 만 해도 답이 나온다 — 두 자리 곱셈에서 정작 연습해야 할
+       십의 자리와 받아올림을 한 번도 안 쓰고 넘어간다.
+
        문제에 이미 보이는 숫자는 답처럼 느껴지므로 보기에서 뺀다."""
     used = {answer, *taken, *re.findall(r'\d+(?:\.\d+)?', question)}
     picks = []
 
-    cands = number_wrongs(answer)
+    # 곱셈은 식을 읽어서 **아이가 실제로 하는 실수**를 만든다. 일반 후보보다 먼저 쓴다.
+    cands = mul_wrongs(question, answer) + number_wrongs(answer)
     if cands:
-        random.shuffle(cands[2:])   # 앞의 둘(자릿수 실수)은 우선순위를 지킨다
-        for c in cands:
+        for c in dedupe(cands):
             if len(picks) >= need:
                 break
             if c not in used:
@@ -642,6 +646,43 @@ def auto_wrongs(answer, need, taken, question, group_answers, all_answers):
     return picks
 
 
+MUL_RE = re.compile(r'(\d+)\s*[×xX*]\s*(\d+)')
+
+
+def mul_wrongs(question, answer):
+    """곱셈에서 3학년이 실제로 하는 실수. **셋 다 일의 자리가 정답과 같다** —
+       그래서 일의 자리만 계산하고 고르는 길이 막힌다.
+
+       식이 문장 안에 없거나 식의 값이 답과 다르면(문장제·두 단계) 손대지 않는다."""
+    m = MUL_RE.search(question)
+    if not m or not re.fullmatch(r'\d+', answer):
+        return []
+    a, b = int(m.group(1)), int(m.group(2))
+    if a * b != int(answer):
+        return []
+    if b > a:
+        a, b = b, a
+
+    out = []
+    if 1 < b < 10:
+        # 받아올림을 안 한다 — 자리마다 곱해서 끝자리만 적는다. 358 × 2 → 606
+        each = [int(d) * b for d in str(a)]
+        if any(v >= 10 for v in each):
+            out.append(int(''.join(str(v % 10) for v in each)))
+    if a >= 10:
+        # 일의 자리만 곱하고 윗자리는 그대로 베낀다. 12 × 3 → 16
+        out.append(int(str(a)[:-1] + str(a % 10 * b % 10)))
+
+    n = a * b
+    # 윗자리를 하나 틀린다. 좁게 붙여둔다 — 넓게 벌리면 어림만으로 골라진다
+    out += [n + s * 10 ** p for s in (1, -1, 2, -2) for p in places_of(n)]
+    # 십의 자리를 하나 더(덜) 곱한다. 34 × 5 → 220·120
+    out += [n + s * 10 * b for s in (1, -1, 2, -2)]
+
+    # 자릿수가 다르면 보기 모양이 깨진다 — 그건 계산 안 하고도 걸러진다
+    return [str(c) for c in out if c > 0 and len(str(c)) == len(answer)]
+
+
 def number_wrongs(answer):
     """답이 수일 때의 오답 후보 — 앞쪽일수록 '있을 법한 실수'다. 수가 아니면 빈 목록."""
     if re.fullmatch(r'-?\d+\.\d+', answer):
@@ -660,23 +701,38 @@ def number_wrongs(answer):
 
     if zeros:
         # 10·100·1000 단위 답 — 단위 변환일 가능성이 높다. 자릿수 실수를 먼저 낸다.
+        # 이쪽은 손대지 않는다. 끝자리가 0이라 일의 자리는 이미 넷이 같다.
         step = 10 ** zeros
         out = [n * 10, n // 10, n + step, n - step, n + 2 * step, n - 2 * step, n + 5 * step]
+    elif abs(n) >= 10:
+        # 두 자리 이상 — **일의 자리를 그대로 둔 값**을 먼저 낸다 (28.2).
+        # 윗자리를 틀리는 것이 이 나이대의 실수이기도 하다: 246을 346이나 236으로 쓴다.
+        # 자리를 번갈아 간다. 셋 다 십의 자리만 다르면 이번엔 십의 자리만 보고 고른다.
+        out = [n + s * 10 ** p for s in (1, -1, 2, -2, 3, -3, 5, -5) for p in places_of(n)]
+        out = [c for c in out if len(str(abs(c))) == len(str(abs(n)))]
+        # 여기까지로 셋을 못 채웠을 때만 쓰는 뒷줄. 일의 자리가 달라진다.
+        out += [swap_digits(n), n + 1, n - 1, n + 2, n - 2]
+        out += [n + d for d in divisors(n)] + [n - d for d in divisors(n)]
     else:
+        # 한 자리 답 — 일의 자리가 곧 답이라 지름길이 없다. 예전 그대로.
         out = [n + 1, n - 1, n + 2, n - 2]
-        if abs(n) >= 10:
-            # 한 자리 답에 30·40 같은 보기가 나오면 너무 티가 난다
-            out += [swap_digits(n), n + 10, n - 10]
-            out += [n + d for d in divisors(n)] + [n - d for d in divisors(n)]
     return [str(c) for c in out if c > 0]
 
 
+def places_of(n):
+    """일의 자리를 뺀 자릿수들 — 십·백·천… 가까운 자리부터.
+       246이면 [1, 2] → 십의 자리(±10)와 백의 자리(±100)를 건드린 오답이 나온다."""
+    return list(range(1, len(str(abs(n)))))
+
+
 def filler(answer, used):
-    """후보가 다 막혔을 때 — 답과 자릿수만 맞춘 아무 수"""
+    """후보가 다 막혔을 때 — 답과 자릿수만 맞춘 아무 수.
+       두 자리 이상이면 10씩 움직인다. 여기서 1씩 움직이면 앞에서 맞춰둔 일의 자리가 깨진다."""
     if not re.fullmatch(r'-?\d+', answer):
         return None
     n = int(answer)
-    step = 10 ** (len(re.search(r'0*$', str(abs(n))).group(0)) if n else 0)
+    zeros = len(re.search(r'0*$', str(abs(n))).group(0)) if n else 0
+    step = 10 ** (zeros or (1 if abs(n) >= 10 else 0))
     for d in range(3, 40):
         for c in (n + d * step, n - d * step):
             if c > 0 and str(c) not in used:

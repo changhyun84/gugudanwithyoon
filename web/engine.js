@@ -376,19 +376,30 @@ export function bridge(a, b) {
   return `${x}을(를) ${y}번 더한 값이야.`;
 }
 
-/* 아이가 실제로 헷갈리는 값으로 오답을 만든다 */
+/* 아이가 실제로 헷갈리는 값으로 오답을 만든다 — 옆 단(7×8의 49·63)이 가장 쓸모 있다.
+
+   다만 넷 중 **정답만 일의 자리가 다르면** 다 떠올리지 않고 «6으로 끝나는 것»만 찾아도 맞는다.
+   그래서 일의 자리가 같은 값을 하나는 남긴다 (구현-현황 28.2).
+   한 자리 답에는 안 한다 — 일의 자리가 곧 답이라 지름길이 없고, 두 자리 보기가 끼면 티가 난다. */
 export function makeChoices(a, b) {
   const ans = a * b;
   const set = [ans];
+  // 자릿수가 다른 보기는 세어보지 않고도 걸러진다 — 12의 보기에 2가 있으면 보기가 셋이다
+  const sameShape = c => c > 0 && String(c).length === String(ans).length;
   const cands = [a * (b - 1), a * (b + 1), (a - 1) * b, (a + 1) * b, ans + 2, ans - 2, ans + 10, ans - 10, (a + 1) * (b - 1)];
   cands.sort(() => Math.random() - .5);
   for (const c of cands) {
     if (set.length >= 4) break;
-    if (c > 0 && !set.includes(c)) set.push(c);
+    if (sameShape(c) && !set.includes(c)) set.push(c);
   }
   while (set.length < 4) {
     const g = ans + Math.ceil(Math.random() * 9);
     if (!set.includes(g)) set.push(g);
+  }
+  if (ans >= 10 && !set.slice(1).some(c => c % 10 === ans % 10)) {
+    const twin = [10, -10, 20, -20, 30, -30].map(d => ans + d)
+      .find(c => sameShape(c) && !set.includes(c));
+    if (twin) set[3] = twin;      // 가장 약한 후보 하나만 바꿔 낀다
   }
   return set.sort(() => Math.random() - .5).map(String);
 }

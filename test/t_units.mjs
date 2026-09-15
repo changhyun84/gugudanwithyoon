@@ -396,7 +396,7 @@ const realWord = new Set(Object.keys(words).map(w => w.toLowerCase()));
 ok('가짜 철자가 같은 단원의 진짜 낱말이 아니다',
   byGroup('철자 고르기').every(q => q.choices.every(c => c === q.answer || !realWord.has(c.toLowerCase()))));
 
-/* ── 보기 품질 (2026-08-24) ── *//* ── 보기 품질 (2026-08-24) ── */
+/* ── 보기 품질 (2026-08-24 · 일의 자리는 2026-09-14) ── */
 group('보기 넷이 같은 모양인가 — 계산 안 하고 고를 수 있으면 안 됩니다');
 
 const shape = execFileSync('python3', ['-c', `
@@ -404,6 +404,7 @@ import json, packs, pathlib, re
 def z(x):
     return len(re.search(r'0*$', x).group(0)) if re.fullmatch(r'\\d+', x) else -1
 bad, tot, dup, short = 0, 0, 0, 0
+ones, ones_tot, worst = 0, 0, None
 for p in packs.scan(pathlib.Path('content/problems')):
     for q in p['problems']:
         if len(set(q['choices'])) != 4: dup += 1
@@ -413,12 +414,35 @@ for p in packs.scan(pathlib.Path('content/problems')):
         zs = [z(c) for c in q['choices']]
         # 정답만 유일하게 0으로 끝나면 계산 없이 고를 수 있다
         if z(q['answer']) > 0 and sum(1 for v in zs if v > 0) == 1: bad += 1
-print(json.dumps([bad, tot, dup, short]))`], { cwd: ROOT, encoding: 'utf8' });
-const [giveaway, numTotal, dupChoices, shortChoices] = JSON.parse(shape);
+        # 한 자리 답은 일의 자리가 곧 답이라 지름길이 없다 — 두 자리부터 본다
+        if len(q['answer']) < 2 or not all(re.fullmatch(r'\\d+', c) for c in q['choices']): continue
+        ones_tot += 1
+        if [c for c in q['choices'] if int(c) % 10 == int(q['answer']) % 10] == [q['answer']]:
+            ones += 1
+            if worst is None: worst = [q['prompt'], q['answer'], sorted(q['choices'], key=int)]
+print(json.dumps([bad, tot, dup, short, ones, ones_tot, worst], ensure_ascii=False))`],
+  { cwd: ROOT, encoding: 'utf8' });
+const [giveaway, numTotal, dupChoices, shortChoices, onesBad, onesTotal, worst] = JSON.parse(shape);
 
 ok(`보기가 전부 4개 (겹침 ${dupChoices} · 모자람 ${shortChoices})`, !dupChoices && !shortChoices);
 ok(`"딱 떨어지는 수만 고르면 맞는" 문제 0개 (${numTotal}개 중 ${giveaway})`, giveaway === 0);
 
+/* 12 × 3 의 보기가 35·36·37·38 이면 2 × 3 만 해도 답이 나온다.
+   두 자리 곱셈에서 연습해야 할 십의 자리와 받아올림을 한 번도 안 쓰고 넘어간다 (28.2). */
+ok(`"일의 자리만 계산하면 맞는" 문제 0개 (${onesTotal}개 중 ${onesBad})`
+   + (worst ? ` — 예: ${worst[0]} = ${worst[1]} ${JSON.stringify(worst[2])}` : ''),
+   onesBad === 0);
+
+/* 오답이 실제로 «있을 법한 실수»인가 — 받아올림을 빼먹은 값·일의 자리만 곱한 값 */
+const mulWrongs = execFileSync('python3', ['-c', `
+import json, packs
+print(json.dumps({q: packs.mul_wrongs(q, a) for q, a in
+                  [('358 × 2', '716'), ('12 × 3', '36'), ('15 × 4에서 20을 빼면', '40')]}))`],
+  { cwd: ROOT, encoding: 'utf8' });
+const mw = JSON.parse(mulWrongs);
+ok('358 × 2 의 오답에 받아올림을 빼먹은 606이 있다', mw['358 × 2'].includes('606'));
+ok('12 × 3 의 오답에 일의 자리만 곱한 16이 있다', mw['12 × 3'].includes('16'));
+ok('식의 값이 답과 다르면(문장제) 곱셈 오답을 만들지 않는다', mw['15 × 4에서 20을 빼면'].length === 0);
 /* ── 기본과 심화 (파일) ── */
 group('기본과 심화');
 
@@ -462,6 +486,37 @@ const { join } = await import('node:path');
 const tmp = mkdtempSync(join(tmpdir(), 'gugudan-units-'));
 writeFileSync(join(tmp, 'engine.mjs'), readFileSync(new URL('../web/engine.js', import.meta.url)));
 const E = await import('file://' + join(tmp, 'engine.mjs'));
+
+/* 내장 구구단도 같은 잣대로 본다 — 파일 문제만 고치고 여기를 빼먹으면 절반이 그대로다.
+   보기를 낼 때마다 새로 만들므로 여러 번 돌려서 본다. */
+const guFacts = [...E.TARGETS, ...E.EASY];
+let guOnes = 0, guShape = 0, guDup = 0, guMissing = 0, guNeighbor = 0, guTot = 0, guTwo = 0, guWorst = null;
+for (const [a, b] of guFacts) {
+  for (let i = 0; i < 200; i++) {
+    const ch = E.makeChoices(a, b).map(Number);
+    const ans = a * b;
+    guTot++;
+    if (new Set(ch).size !== 4) guDup++;
+    if (!ch.includes(ans)) guMissing++;
+    if (ch.some(c => String(c).length !== String(ans).length)) guShape++;
+    if (ch.some(c => c === a * (b - 1) || c === a * (b + 1) || c === (a - 1) * b || c === (a + 1) * b)) guNeighbor++;
+    if (ans < 10) continue;                       // 한 자리 답은 일의 자리가 곧 답이다
+    guTwo++;
+    if (ch.filter(c => c % 10 === ans % 10).length === 1) {
+      guOnes++;
+      if (!guWorst) guWorst = `${a}×${b}=${ans} ${ch.join(',')}`;
+    }
+  }
+}
+ok(`구구단 보기에 정답이 늘 있다 (${guTot}번 중 빠진 것 ${guMissing})`, guMissing === 0);
+ok(`구구단 보기가 겹치지 않는다 (겹친 것 ${guDup})`, guDup === 0);
+ok(`구구단 보기 넷의 자릿수가 같다 (어긋난 것 ${guShape})`, guShape === 0);
+ok(`구구단도 "일의 자리만 떠올리면 맞는" 보기가 없다 (${guTwo}번 중 ${guOnes})`
+   + (guWorst ? ` — 예: ${guWorst}` : ''), guOnes === 0);
+/* 일의 자리를 맞추느라 옆 단(7×8의 49·63)을 다 몰아내면 오답이 쓸모없어진다 */
+ok(`옆 단 오답이 그대로 남아 있다 (${(guNeighbor * 100 / guTot).toFixed(0)}% — 80% 위)`,
+   guNeighbor / guTot > 0.8);
+
 
 const pack = (id, subject, unit, order) => ({
   id, subject, unit, order, name: id,
