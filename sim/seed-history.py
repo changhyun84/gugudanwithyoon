@@ -12,7 +12,20 @@ import sys
 from pathlib import Path
 
 OUT = Path(__file__).resolve().parent.parent / 'content' / 'problems' / '한국사'
-HEAD = ['문제', '정답', '오답1', '오답2', '오답3', '힌트', '묶음', '난이도']
+HEAD = ['문제', '정답', '오답1', '오답2', '오답3', '힌트', '묶음', '난이도', '유형']
+
+# 심화 중에서 **직접 쓰게 할 것**. 답이 짧은 이름이라 떠올려 쓸 수 있는 것만이다.
+#
+# 「무엇이 다를까」는 둘만 넣는다. `농사를 짓는가`와 `백성을 가르치는 바른 소리`는
+# 아는 아이도 «농사»·«백성을 가르치는 소리»라고 쓸 수 있다. 맞는 표현이 여럿인 질문을
+# 단답으로 내면 아이가 배우는 것은 «아는데 틀렸다»다 — 이 게임에서 가장 나쁜 결과다.
+# 그런 질문은 6C 서술형 몫이다 (기획서 12.2).
+SHORT_GROUPS = ('먼저와 나중',)
+SHORT_ANSWERS = ('고조선', '남북국 시대')
+
+
+def kind_of(group, ans):
+    return '단답' if group in SHORT_GROUPS or ans in SHORT_ANSWERS else ''
 
 # (문제, 정답, 힌트, 묶음, 오답3개 또는 None)
 PACKS = {
@@ -319,8 +332,9 @@ if __name__ == '__main__':
             w = csv.writer(f)
             w.writerow(HEAD)
             for prompt, ans, hint, group, wrongs in items:
-                w.writerow([prompt, ans, *(wrongs or ('', '', '')), hint, group, ''])
+                w.writerow([prompt, ans, *(wrongs or ('', '', '')), hint, group, '', ''])
             for prompt, ans, hint, group, wrongs in DEEP.get(name, []):
-                w.writerow([prompt, ans, *(wrongs or ('', '', '')), hint, group, '심화'])
+                w.writerow([prompt, ans, *(wrongs or ('', '', '')), hint, group, '심화',
+                            kind_of(group, ans)])
         deep_n = len(DEEP.get(name, []))
         print(f'  {path.name:26} {len(items) + deep_n:3}문제 (기본 {len(items)} · 심화 {deep_n})')

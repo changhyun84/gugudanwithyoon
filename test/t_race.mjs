@@ -17,6 +17,13 @@ import { join } from 'node:path';
 
 const ROOT = new URL('..', import.meta.url).pathname;
 
+/* 실제 문제로 돌려야 의미가 있습니다. 이 파일은 `dist/content.json`을 읽기만 하고
+   만들지는 않아서, t_apprun보다 먼저 도는 순서에서는 조용히 터졌습니다.
+   검사 하나하나가 **혼자서도 돌아야** 합니다. **늘 다시 굽습니다.** 있으면 그냥 쓰던 때가 있었는데, 문제 파일을 고친 뒤에는
+   그게 **옛 내용으로 검사하는 것**이 됩니다. 0.4초면 굽습니다 — 조용히 옛것을 보는
+   쪽이 훨씬 비쌉니다. */
+execFileSync('python3', ['sim/build-static.py'], { cwd: ROOT, stdio: 'ignore' });
+
 let pass = 0, fail = 0;
 const ok = (name, cond) => cond
   ? (pass++, console.log('  ✓', name))

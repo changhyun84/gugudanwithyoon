@@ -7,14 +7,16 @@
    여기서 확인하는 것은 «한 바퀴 훑기»가 그 단원의 문제를 **하나도 안 빼고** 내는가입니다.
    단어시험 전에 전체를 훑겠다는 요구라, 하나라도 빠지면 그 낱말만 시험에서 틀립니다. */
 
-import { readFileSync, mkdtempSync, writeFileSync, cpSync, existsSync } from 'node:fs';
+import { readFileSync, mkdtempSync, writeFileSync, cpSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const ROOT = new URL('..', import.meta.url).pathname;
-if (!existsSync(join(ROOT, 'dist/content.json')))
-  execFileSync('python3', ['sim/build-static.py'], { cwd: ROOT, stdio: 'ignore' });
+/* **늘 다시 굽습니다.** 있으면 그냥 쓰던 때가 있었는데, 문제 파일을 고친 뒤에는
+   그게 **옛 내용으로 검사하는 것**이 됩니다. 0.4초면 굽습니다 — 조용히 옛것을 보는
+   쪽이 훨씬 비쌉니다. */
+execFileSync('python3', ['sim/build-static.py'], { cwd: ROOT, stdio: 'ignore' });
 
 let pass = 0, fail = 0;
 const group = t => console.log(`\n${t}`);
@@ -284,6 +286,30 @@ ok('직접 써서 맞힌 것은 마스터리가 올라간다',
 ok('틀린 것은 «어려워하는 문제»에 남는다 — 부모가 본다',
   Object.values(done.facts).some(f => (f.log || []).some(x => x.endsWith(':x'))));
 
+/* ⑤ 글자 답 — 띄어쓰기까지 맞춰 쓰게 하면 아는 아이가 틀린다 */
+const histSeed = structuredClone(seed);
+histSeed.id = 'hist'; histSeed.progress = { units: ['2-3-임진왜란과-이순신'], level: '심화' };
+const H = await boot(histSeed);
+click(H.app, '#play');
+H.app.querySelectorAll('[data-sweep]')[0].onclick();
+
+const HIST = CONTENT.packs.find(p => p.id === '2-3-임진왜란과-이순신');
+const hAns = {};
+for (const q of HIST.problems) hAns[q.prompt] = String(q.answer);
+
+let walked = 0;
+while (!H.app.querySelector('#typed') && walked++ < 8) {
+  const p2 = promptNow(H.app);
+  H.app.querySelectorAll('[data-pick]').find(b2 => unesc(b2.textContent) !== hAns[p2]).onclick();
+  click(H.app, '#next');
+}
+ok('한국사에도 직접 쓰는 문제가 섞여 나온다', !!H.app.querySelector('#typed'));
+ok('글자 답에는 숫자판을 안 띄운다', !/inputmode=/.test(H.app.innerHTML));
+const want = hAns[promptNow(H.app)];
+H.app.querySelector('#typed').value = want.replace(/\s+/g, '');   // «한산도대첩»
+click(H.app, '#ok');
+ok(`띄어쓰기를 빼고 써도 맞다 — «${want}»`, /맞았어/.test(H.app.innerHTML));
+
 group('다시는 이렇게 터지지 않게');
 
 /* 이 검사는 «검사에 대한 검사»입니다. node 21이 `navigator`를 전역에 들이면서
@@ -297,6 +323,18 @@ const offenders = readdirSync(join(ROOT, 'test'))
 ok('어떤 검사도 globalThis에 **대입**하지 않는다 — defineProperty를 쓴다',
   !offenders.length);
 if (offenders.length) console.log('     ', offenders.join(' / '));
+
+/* 같은 종류의 «검사에 대한 검사» 하나 더. `dist/content.json`을 읽기만 하고 만들지 않는
+   검사는 **혼자 돌릴 때만** 터집니다 — t_apprun이 먼저 도는 순서에서는 이미 있으니까요.
+   t_race가 그랬습니다. 검사 하나하나가 혼자서도 돌아야 합니다. */
+const needsDist = readdirSync(join(ROOT, 'test'))
+  .filter(f => f.endsWith('.mjs'))
+  .map(f => [f, readFileSync(join(ROOT, 'test', f), 'utf8')])
+  .filter(([, src]) => src.includes('dist/content.json') && !src.includes('build-static.py'))
+  .map(([f]) => 'test/' + f);
+ok('dist를 읽는 검사는 스스로 굽는다 — 혼자 돌려도, 문제 파일을 고친 뒤에도',
+  !needsDist.length);
+if (needsDist.length) console.log('     ', needsDist.join(' / '));
 
 console.log(`\n${pass}개 통과, ${fail}개 실패`);
 process.exit(fail ? 1 : 0);

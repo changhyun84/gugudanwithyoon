@@ -9,7 +9,7 @@
    "칸들이 불러오는 중에서 벗어나는가" 둘뿐입니다. */
 
 import { execFileSync } from 'node:child_process';
-import { readFileSync, writeFileSync, mkdtempSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -118,8 +118,10 @@ async function run(seedProfile, mode = 'static') {
 
 /* 실제 문제로 돌려야 의미가 있습니다. 없으면 만들어 씁니다 —
    테스트가 빌드보다 먼저 도는 CI에서도 이 파일 하나로 완결되게. */
-if (!existsSync(join(ROOT, 'dist/content.json')))
-  execFileSync('python3', ['sim/build-static.py'], { cwd: ROOT, stdio: 'ignore' });
+/* **늘 다시 굽습니다.** 있으면 그냥 쓰던 때가 있었는데, 문제 파일을 고친 뒤에는
+   그게 **옛 내용으로 검사하는 것**이 됩니다. 0.4초면 굽습니다 — 조용히 옛것을 보는
+   쪽이 훨씬 비쌉니다. */
+execFileSync('python3', ['sim/build-static.py'], { cwd: ROOT, stdio: 'ignore' });
 
 /* ── 아이가 있을 때 ── */
 group('부모 화면이 끝까지 도는가 — 아이가 있을 때');

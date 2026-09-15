@@ -579,6 +579,33 @@ ok('선택형은 예전대로 빠지고 부모에게 알린다',
   typed.alonepick.problems.length === 0 &&
   typed.alonepick.warnings.some(w => w.includes('보기를 4개로 만들 수 없어')));
 
+/* 저장소의 진짜 문제로 — 무엇을 단답으로 냈는지는 판단이고, 판단은 적어둬야 한다 */
+const shorts = JSON.parse(execFileSync('python3', ['-c', `
+import json, packs, pathlib
+out = []
+for p in packs.scan(pathlib.Path('content/problems')):
+    for q in p['problems']:
+        out.append({'subject': p['subject'], 'group': q['group'], 'answer': q['answer'],
+                    'prompt': q['prompt'], 'type': q.get('type', 'choice'), 'deep': q['deep']})
+print(json.dumps(out, ensure_ascii=False))`], { cwd: ROOT, encoding: 'utf8' }));
+
+const typedQs = shorts.filter(q => q.type === 'short');
+const bySubj = s => typedQs.filter(q => q.subject === s).length;
+ok(`직접 쓰는 문제 ${typedQs.length}개 — 수학 ${bySubj('수학')} · 한국사 ${bySubj('한국사')}`,
+  bySubj('수학') === 195 && bySubj('한국사') === 10);
+ok('수학 심화는 전부 단답이다',
+  shorts.filter(q => q.subject === '수학' && q.deep).every(q => q.type === 'short'));
+ok('기본 문제는 하나도 단답이 아니다 — 처음부터 쓰게 하지 않는다',
+  !typedQs.some(q => !q.deep));
+/* 받아쓰기가 되면 그건 아는지 묻는 게 아니라 옮겨 적는지 묻는 것이다 */
+const longestTyped = Math.max(...typedQs.map(q => q.answer.length));
+ok(`단답의 답이 가장 길어야 ${longestTyped}자 — 10자 아래`, longestTyped < 10);
+/* 맞는 표현이 여럿인 질문을 단답으로 내면 아는 아이가 다르게 써서 틀린다 (기획서 12.1) */
+const openEnded = shorts.filter(q =>
+  q.prompt === '훈민정음의 뜻은?' || q.prompt === '구석기와 신석기를 가르는 가장 큰 차이는?');
+ok('표현이 여럿일 수 있는 질문은 선택형으로 남겼다 — 6C 서술형 몫이다',
+  openEnded.length === 2 && openEnded.every(q => q.type === 'choice'));
+
 group('단답 채점 — 애매하면 정답 쪽으로 기운다 (기획서 12.1)');
 
 const short = a => ({ type: 'short', answer: a, answers: null });
