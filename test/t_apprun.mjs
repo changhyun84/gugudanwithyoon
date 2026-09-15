@@ -149,6 +149,11 @@ ok('단원마다 «한 바퀴» 버튼이 있다', has(app, '[data-sweep]'));
 
 const sweepBtn = app.querySelectorAll('[data-sweep]').find(b => b.dataset.sweep === '13-단어장');
 ok('13 단어장에도 «한 바퀴»가 붙어 있다', !!sweepBtn);
+/* 이름이 잘려 보인 적이 있습니다 — 그때도 글자는 다 있었고 CSS가 잘랐습니다 (43장).
+   여기서는 «글자가 다 실려 있는가»만 봅니다. 자르는 쪽은 t_sweep이 봅니다. */
+ok('단원 이름이 통째로 실린다 — «12 단어장»·«13 단어장»',
+  app.querySelectorAll('[data-pack]').some(b => b.textContent === '13 단어장') &&
+  app.querySelectorAll('[data-pack]').some(b => b.textContent === '12 단어장'));
 sweepBtn.onclick();
 ok('훑기가 시작된다 — 머리글에 «한 바퀴»가 있다', /한 바퀴 1 \/ \d+/.test(app.innerHTML));
 const total = Number(/한 바퀴 1 \/ (\d+)/.exec(app.innerHTML)[1]);

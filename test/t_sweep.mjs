@@ -117,7 +117,21 @@ ok('훑기도 하루 몫에 센다 — 문제를 푼 것은 푼 것이다',
   SRC.indexOf('if (sweep) { if (right') > SRC.indexOf('P.daily.solved++'));
 ok('훑은 문제도 마스터리에 반영된다', /if \(sweep\)[\s\S]{0,200}applyResult\(INDEX\[q\.key\]/.test(SRC));
 ok('빈 단원을 훑으려 하면 알려준다', /if \(!list\.length\) return toast/.test(SRC));
-ok('줄 배치 스타일이 있다', /\.btnrow \.btn\.wide\{/.test(CSS) && /\.btnrow \.btn\.narrow\{/.test(CSS));
+/* 단원 이름과 「한 바퀴」가 한 줄에 나란히 선다. 여기가 한 번 무너져서 화면에
+   단원 이름이 «1-»까지만 보였습니다 (구현-현황 43장).
+
+   `.btn`은 `width:100%`다. flex-basis가 `auto`면 그 100%가 그대로 기준이 되는데,
+   narrow는 `flex-shrink:0`이라 **줄어들지 못한다** — 한 줄을 통째로 차지하고 옆 칸이
+   0이 된다. 줄어들지 못하는 칸은 반드시 제 내용 크기에서 출발해야 한다. */
+const rule = name => (new RegExp(`\\.btnrow \\.btn\\.${name}\\{([^}]*)\\}`, 's').exec(CSS) || [])[1] || '';
+const narrow = rule('narrow'), wide = rule('wide');
+
+ok('줄 배치 스타일이 있다', !!narrow && !!wide);
+ok('안 줄어드는 칸(narrow)은 제 내용만큼만 차지한다 — 안 그러면 옆 칸이 0이 된다',
+  /flex:\s*0\s+0\s+auto/.test(narrow) && /width:\s*auto/.test(narrow));
+ok('단원 이름 칸(wide)은 줄어들 수 있다', /flex:\s*1\s+1/.test(wide) && /min-width:\s*0/.test(wide));
+/* 「2-2 나머지가 있는 나눗셈」이 «2-2 나머지가…»가 되면 아이가 무엇을 고르는지 모른다 */
+ok('긴 단원 이름은 자르지 않고 접는다', !/text-overflow/.test(wide) && /white-space:\s*normal/.test(wide));
 
 console.log(`\n${pass}개 통과, ${fail}개 실패`);
 process.exit(fail ? 1 : 0);

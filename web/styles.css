@@ -58,10 +58,17 @@ h1,h2,h3,.display{font-family:'Jua','Apple SD Gothic Neo',sans-serif;font-weight
 .btn.soft{background:var(--card);color:var(--ink);border:2px solid var(--line);box-shadow:var(--shadow)}
 .btn.sun{background:var(--sun);color:#4A3510}
 .btn[disabled]{opacity:.45;cursor:default;box-shadow:none;transform:none}
-.btnrow{display:flex;gap:10px;margin-top:12px}
+.btnrow{display:flex;gap:10px;margin-top:12px;align-items:stretch}
 .btnrow .btn{margin:0}
-.btnrow .btn.wide{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.btnrow .btn.narrow{flex:0 0 auto;padding-left:18px;padding-right:18px;font-size:15px}
+/* `.btn`은 `width:100%`다. flex-basis가 `auto`면 **그 100%가 그대로 기준**이 되는데,
+   narrow는 `flex-shrink:0`이라 줄어들지 못한다 — 한 줄을 통째로 차지하고 옆의 단원 이름이
+   안쪽 여백만 남아 «1-»로 잘렸다. narrow는 내용 크기에서 출발하게 `width:auto`를 준다.
+
+   이름은 자르지 않고 **접는다.** 「2-2 나머지가 있는 나눗셈」을 «2-2 나머지가…»로 줄이면
+   아이가 무엇을 고르는지 모른다. 줄임표는 글자 수를 줄일 뿐 뜻을 안 남긴다. */
+.btnrow .btn.wide{flex:1 1 auto;min-width:0;white-space:normal;word-break:keep-all}
+.btnrow .btn.narrow{flex:0 0 auto;width:auto;white-space:nowrap;
+  padding-left:18px;padding-right:18px;font-size:15px}
 
 /* --- progress --- */
 .prog{margin-top:16px}
